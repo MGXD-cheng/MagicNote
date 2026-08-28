@@ -1,0 +1,31 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# ===== 安全排除（含密钥/构建产物/备份） =====
+/.backup/
+/.operit/
+/tools/
+/keystore/
+*.apk
+*.aab
+*.keystore
+*.jks
+*.idsig
+*.hprof
+
+# ===== Kotlin 构建缓存 =====
+/.kotlin/
