@@ -348,6 +348,27 @@ fun SettingsScreen(vm: SettingsViewModel, onClose: () -> Unit = {}) {
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.outline
                 )
+                // ===== 模型图片识别开关 =====
+                val modelVision by vm.modelVision.collectAsStateWithLifecycle()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("模型支持图片识别", style = MaterialTheme.typography.titleMedium)
+                        Text("开启后日记图片随文字一起发给 AI", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+                    }
+                    Switch(
+                        checked = modelVision,
+                        onCheckedChange = { vm.saveModelVision(it) }
+                    )
+                }
+                Text(
+                    "开启后：写日记时如果附带了图片，图片会一起注入 AI 用于生成回复（需模型支持视觉，如 gpt-4o / deepseek-vl / qwen-vl 等；不支持的模型会忽略图片或报错，此时请关闭本开关）。图片仅本机压缩后上传，不保存到云端",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
             }
 
             // ===== 纯净模式 =====
