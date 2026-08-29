@@ -103,6 +103,9 @@ suspend fun clearChats() = db.chatDao().clearAll()
     val diaryAutoReply get() = prefs.diaryAutoReply
     suspend fun saveDiaryAutoReply(enabled: Boolean) = prefs.saveDiaryAutoReply(enabled)
 
+    val modelVision get() = prefs.modelVision
+    suspend fun saveModelVision(enabled: Boolean) = prefs.saveModelVision(enabled)
+
     suspend fun saveScreenTimeWarn(pkg: String, at: Long) =
         prefs.saveScreenTimeWarn(pkg, at)
 
