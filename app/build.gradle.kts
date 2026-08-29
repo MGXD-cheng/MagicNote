@@ -13,8 +13,8 @@ android {
         applicationId = "com.magicnote.mgxd"
         minSdk = 24
         targetSdk = 35
-        versionCode = 63
-        versionName = "6.3"
+        versionCode = 64
+        versionName = "6.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
