@@ -71,13 +71,18 @@ class DiaryViewModel(
             val personality = Personality.fromId(config.personalityId)
             val dateStr = Instant.ofEpochMilli(diary.date).atZone(ZoneId.systemDefault()).format(dateTimeFmt)
             val prompt = AiPrompter.buildDiaryReplyPrompt(personality, diary.title, diary.content, diary.mood, dateStr)
+            // 图片识别开关开启且有图：把日记图片压成 base64 一并注入（需模型支持视觉）
+            val images = if (repo.modelVision.collectFirst() && diary.imagePaths.isNotEmpty()) {
+                withContext(Dispatchers.IO) { diary.imagePaths.mapNotNull { loadBase64Image(it) } }
+            } else emptyList()
             val reply = withContext(Dispatchers.IO) {
                 try {
                     client.chat(
                         baseUrl = config.baseUrl,
                         apiKey = config.apiKey,
                         model = config.model,
-                        messages = listOf(AiClient.ChatMessage("user", prompt))
+                        messages = listOf(AiClient.ChatMessage("user", prompt, images)),
+                        timeoutSeconds = 90
                     )
                 } catch (e: CancellationException) {
                     throw e
@@ -92,6 +97,29 @@ class DiaryViewModel(
         } catch (e: Exception) {
             // 自动回复失败不影响写日记主流程
         }
+    }
+
+    /** 读取本地图片并压成长边 ≤1024 的 JPEG base64（控制体积，vision 接口一般限 ~10MB） */
+    private fun loadBase64Image(path: String): String? = try {
+        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(path, opts)
+        if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
+        // 采样压缩：长边压到 ~1024
+        var sample = 1
+        while (maxOf(opts.outWidth, opts.outHeight) / sample > 2048) sample *= 2
+        val bitmap = android.graphics.BitmapFactory.decodeFile(path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return null
+        // 等比缩到长边 1024 + JPEG 85%
+        val maxSide = maxOf(bitmap.width, bitmap.height)
+        val scaled = if (maxSide > 1024) {
+            val ratio = 1024f / maxSide
+            android.graphics.Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt(), true)
+        } else bitmap
+        val bos = java.io.ByteArrayOutputStream()
+        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bos)
+        android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP)
+    } catch (e: Exception) {
+        null
     }
 
     fun delete(diary: DiaryEntity) {
