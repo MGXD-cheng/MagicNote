@@ -48,6 +48,9 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
     private val _diaryAutoReply = MutableStateFlow(false)
     val diaryAutoReply: StateFlow<Boolean> = _diaryAutoReply.asStateFlow()
 
+    private val _modelVision = MutableStateFlow(false)
+    val modelVision: StateFlow<Boolean> = _modelVision.asStateFlow()
+
     init {
         viewModelScope.launch { repo.aiConfig.collect { _aiConfig.value = it } }
         viewModelScope.launch { repo.notifyConfig.collect { _notifyConfig.value = it } }
@@ -56,6 +59,11 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.pureMode.collect { _pureMode.value = it } }
         viewModelScope.launch { repo.moduleConfig.collect { _moduleConfig.value = it } }
         viewModelScope.launch { repo.diaryAutoReply.collect { _diaryAutoReply.value = it } }
+        viewModelScope.launch { repo.modelVision.collect { _modelVision.value = it } }
+    }
+
+    fun saveModelVision(enabled: Boolean) {
+        viewModelScope.launch { repo.saveModelVision(enabled) }
     }
 
     /** 刷新今日屏幕时间统计（IO 查询，需使用情况访问权限） */
