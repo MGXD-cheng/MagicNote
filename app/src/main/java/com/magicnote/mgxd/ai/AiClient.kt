@@ -6,6 +6,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
@@ -26,16 +31,48 @@ class AiClient {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    @Serializable
+    /**
+     * 对话消息
+     * @param images 图片 base64 列表（不带 data: 前缀）；非空时以 OpenAI vision 多模态格式
+     *               附加到本消息（type=image_url），需模型支持视觉（如 gpt-4o / deepseek-vl / qwen-vl）
+     */
     data class ChatMessage(
-        @SerialName("role") val role: String,
-        @SerialName("content") val content: String
+        val role: String,
+        val content: String,
+        val images: List<String> = emptyList()
     )
+
+    /** 把 ChatMessage 转为符合 OpenAI 协议的 JsonElement（纯文本或多模态数组） */
+    private fun ChatMessage.toJson(): JsonElement {
+        if (images.isEmpty()) {
+            return buildJsonObject {
+                put("role", role)
+                put("content", content)
+            }
+        }
+        return buildJsonObject {
+            put("role", role)
+            put("content", buildJsonArray {
+                add(buildJsonObject {
+                    put("type", "text")
+                    put("text", content)
+                })
+                images.forEach { b64 ->
+                    add(buildJsonObject {
+                        put("type", "image_url")
+                        put("image_url", buildJsonObject {
+                            put("url", "data:image/jpeg;base64,$b64")
+                        })
+                    })
+                }
+            })
+        }
+    }
 
     @Serializable
     private data class ChatRequest(
         @SerialName("model") val model: String,
-        @SerialName("messages") val messages: List<ChatMessage>,
+        @SerialName("messages") val messages: List<JsonElement>,
         @SerialName("temperature") val temperature: Double = 0.8,
         @SerialName("stream") val stream: Boolean = false,
         @SerialName("response_format") val responseFormat: JsonObjectFormat? = null
@@ -114,7 +151,7 @@ class AiClient {
             ChatRequest.serializer(),
             ChatRequest(
                 model = model,
-                messages = messages,
+                messages = messages.map { it.toJson() },
                 responseFormat = if (jsonMode) JsonObjectFormat() else null
             )
         )
