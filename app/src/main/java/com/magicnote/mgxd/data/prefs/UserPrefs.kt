@@ -45,6 +45,7 @@ class UserPrefs(private val context: Context) {
         private val KEY_CALENDAR_ENABLED = booleanPreferencesKey("calendar_enabled")
         private val KEY_DIARY_ENABLED = booleanPreferencesKey("diary_enabled")
         private val KEY_DIARY_AUTO_REPLY = booleanPreferencesKey("diary_auto_reply")
+        private val KEY_MODEL_VISION = booleanPreferencesKey("model_vision")
 
         private val json = Json { ignoreUnknownKeys = true }
 
@@ -206,6 +207,16 @@ class UserPrefs(private val context: Context) {
 
     suspend fun saveDiaryAutoReply(enabled: Boolean) {
         context.dataStore.edit { p -> p[KEY_DIARY_AUTO_REPLY] = enabled }
+    }
+
+    // ---------- 模型图片识别（vision） ----------
+    /** 模型是否支持图片识别；开启后日记自动回复会把日记图片一并注入 AI */
+    val modelVision: Flow<Boolean> = context.dataStore.data.map { p ->
+        p[KEY_MODEL_VISION] ?: false
+    }
+
+    suspend fun saveModelVision(enabled: Boolean) {
+        context.dataStore.edit { p -> p[KEY_MODEL_VISION] = enabled }
     }
 
     // ---------- 应用自定义分类 ----------
