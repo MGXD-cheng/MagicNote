@@ -209,8 +209,8 @@ class UserPrefs(private val context: Context) {
         context.dataStore.edit { p -> p[KEY_DIARY_AUTO_REPLY] = enabled }
     }
 
-    // ---------- 模型图片识别（vision） ----------
-    /** 模型是否支持图片识别；开启后日记自动回复会把日记图片一并注入 AI */
+    // ---------- 模型支持图片识别 ----------
+    /** 开启后 AI 注入日记时连同日记附带的图片一起识别（需模型支持视觉，如 gpt-4o / qwen-vl） */
     val modelVision: Flow<Boolean> = context.dataStore.data.map { p ->
         p[KEY_MODEL_VISION] ?: false
     }
