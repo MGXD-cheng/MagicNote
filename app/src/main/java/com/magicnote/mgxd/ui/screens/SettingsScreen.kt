@@ -146,6 +146,27 @@ fun SettingsScreen(vm: SettingsViewModel, onClose: () -> Unit = {}) {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                // 模型支持图片识别：开启后注入日记时连同日记图片一起识别
+                val modelVision by vm.modelVision.collectAsStateWithLifecycle()
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("模型支持图片识别", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "开启后：AI 回复日记时会把日记附带的图片一起注入识别（需模型支持视觉，如 gpt-4o / qwen-vl）",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                    Switch(
+                        checked = modelVision,
+                        onCheckedChange = { vm.saveModelVision(it) }
+                    )
+                }
                 Text(
                     "支持 OpenAI 及所有兼容接口（DeepSeek / Kimi / 通义 / 本地 Ollama 等）",
                     style = MaterialTheme.typography.labelMedium,
@@ -345,27 +366,6 @@ fun SettingsScreen(vm: SettingsViewModel, onClose: () -> Unit = {}) {
                 }
                 Text(
                     "开启后：保存日记时 AI 会读一遍内容，以当前人格口吻回复，回复存入 Magic AI 聊天记录并推送通知。需要先在「Magic AI 接口配置」填好 API Key",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline
-                )
-                // ===== 模型图片识别开关 =====
-                val modelVision by vm.modelVision.collectAsStateWithLifecycle()
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("模型支持图片识别", style = MaterialTheme.typography.titleMedium)
-                        Text("开启后日记图片随文字一起发给 AI", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
-                    }
-                    Switch(
-                        checked = modelVision,
-                        onCheckedChange = { vm.saveModelVision(it) }
-                    )
-                }
-                Text(
-                    "开启后：写日记时如果附带了图片，图片会一起注入 AI 用于生成回复（需模型支持视觉，如 gpt-4o / deepseek-vl / qwen-vl 等；不支持的模型会忽略图片或报错，此时请关闭本开关）。图片仅本机压缩后上传，不保存到云端",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.outline
                 )
