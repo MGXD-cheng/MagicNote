@@ -3,14 +3,24 @@ package com.magicnote.mgxd.ai
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.CompositeDecoder
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.encoding.decodeStructure
+import kotlinx.serialization.encoding.encodeStructure
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.add
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
@@ -31,48 +41,79 @@ class AiClient {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /**
-     * 对话消息
-     * @param images 图片 base64 列表（不带 data: 前缀）；非空时以 OpenAI vision 多模态格式
-     *               附加到本消息（type=image_url），需模型支持视觉（如 gpt-4o / deepseek-vl / qwen-vl）
-     */
+    @Serializable(with = ChatMessageSerializer::class)
     data class ChatMessage(
-        val role: String,
-        val content: String,
+        @SerialName("role") val role: String,
+        @SerialName("content") val content: String,
+        /** OpenAI vision 图片 data URL 列表（data:image/jpeg;base64,...），为空则纯文本（与旧版序列化格式完全一致） */
         val images: List<String> = emptyList()
     )
 
-    /** 把 ChatMessage 转为符合 OpenAI 协议的 JsonElement（纯文本或多模态数组） */
-    private fun ChatMessage.toJson(): JsonElement {
-        if (images.isEmpty()) {
-            return buildJsonObject {
-                put("role", role)
-                put("content", content)
-            }
+    /**
+     * ChatMessage 自定义序列化器：
+     * - images 为空 → content 输出普通字符串（向后兼容，所有现有调用不变）
+     * - images 非空 → content 输出 OpenAI vision 多模态数组：
+     *   [{"type":"text","text":...},{"type":"image_url","image_url":{"url":"data:image/..."}}...]
+     */
+    object ChatMessageSerializer : KSerializer<ChatMessage> {
+        override val descriptor: SerialDescriptor = buildClassSerialDescriptor("ChatMessage") {
+            element("role", String.serializer().descriptor)
+            element("content", JsonElement.serializer().descriptor)
+            element("images", ListSerializer(String.serializer()).descriptor, isOptional = true)
         }
-        return buildJsonObject {
-            put("role", role)
-            put("content", buildJsonArray {
-                add(buildJsonObject {
-                    put("type", "text")
-                    put("text", content)
-                })
-                images.forEach { b64 ->
-                    add(buildJsonObject {
-                        put("type", "image_url")
-                        put("image_url", buildJsonObject {
-                            put("url", "data:image/jpeg;base64,$b64")
-                        })
-                    })
+
+        override fun serialize(encoder: Encoder, value: ChatMessage) = encoder.encodeStructure(descriptor) {
+            encodeStringElement(descriptor, 0, value.role)
+            val contentElement: JsonElement = if (value.images.isEmpty()) {
+                JsonPrimitive(value.content)
+            } else {
+                JsonArray(
+                    buildList {
+                        add(JsonObject(mapOf("type" to JsonPrimitive("text"), "text" to JsonPrimitive(value.content))))
+                        value.images.forEach { url ->
+                            add(
+                                JsonObject(
+                                    mapOf(
+                                        "type" to JsonPrimitive("image_url"),
+                                        "image_url" to JsonObject(mapOf("url" to JsonPrimitive(url)))
+                                    )
+                                )
+                            )
+                        }
+                    }
+                )
+            }
+            encodeSerializableElement(descriptor, 1, JsonElement.serializer(), contentElement)
+        }
+
+        override fun deserialize(decoder: Decoder): ChatMessage = decoder.decodeStructure(descriptor) {
+            var role = ""
+            var content = ""
+            loop@ while (true) {
+                when (val index = decodeElementIndex(descriptor)) {
+                    CompositeDecoder.DECODE_DONE -> break@loop
+                    0 -> role = decodeStringElement(descriptor, 0)
+                    1 -> {
+                        // 兼容读取：字符串直接取；数组仅提取 text 部分（本项目响应端不解析 ChatMessage，兜底实现）
+                        val element = decodeSerializableElement(descriptor, 1, JsonElement.serializer())
+                        content = when (element) {
+                            is JsonPrimitive -> element.content
+                            is JsonArray -> element.firstOrNull { it is JsonObject && it["type"]?.let { t -> t is JsonPrimitive && t.content == "text" } == true }
+                                ?.let { (it as JsonObject)["text"] as? JsonPrimitive }?.content ?: ""
+                            else -> ""
+                        }
+                    }
+                    else -> error("Unexpected index $index")
                 }
-            })
+            }
+            ChatMessage(role, content)
         }
     }
 
     @Serializable
     private data class ChatRequest(
         @SerialName("model") val model: String,
-        @SerialName("messages") val messages: List<JsonElement>,
+        @SerialName("messages") val messages: List<ChatMessage>,
         @SerialName("temperature") val temperature: Double = 0.8,
         @SerialName("stream") val stream: Boolean = false,
         @SerialName("response_format") val responseFormat: JsonObjectFormat? = null
@@ -151,7 +192,7 @@ class AiClient {
             ChatRequest.serializer(),
             ChatRequest(
                 model = model,
-                messages = messages.map { it.toJson() },
+                messages = messages,
                 responseFormat = if (jsonMode) JsonObjectFormat() else null
             )
         )
