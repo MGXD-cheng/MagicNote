@@ -62,10 +62,6 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.modelVision.collect { _modelVision.value = it } }
     }
 
-    fun saveModelVision(enabled: Boolean) {
-        viewModelScope.launch { repo.saveModelVision(enabled) }
-    }
-
     /** 刷新今日屏幕时间统计（IO 查询，需使用情况访问权限） */
     fun refreshScreenTimeStats(context: Context) {
         viewModelScope.launch {
@@ -157,6 +153,13 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
     fun saveDiaryAutoReply(enabled: Boolean) {
         viewModelScope.launch {
             repo.saveDiaryAutoReply(enabled)
+        }
+    }
+
+    /** 模型支持图片识别开关：开启后 AI 注入日记时连同图片一起识别 */
+    fun saveModelVision(enabled: Boolean) {
+        viewModelScope.launch {
+            repo.saveModelVision(enabled)
         }
     }
 }
