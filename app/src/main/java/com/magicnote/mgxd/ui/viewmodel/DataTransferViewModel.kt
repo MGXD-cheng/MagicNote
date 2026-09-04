@@ -71,6 +71,10 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
 
     private var importImageDir: File? = null
 
+    /** 导出内容就绪事件（单发；UI 收到后触发系统保存框并调用 clearExport） */
+    private val _exportReady = MutableStateFlow<String?>(null)
+    val exportReady: StateFlow<String?> = _exportReady.asStateFlow()
+
     // ============ 导出 ============
 
     suspend fun loadCandidates() {
@@ -149,6 +153,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                 }
             }
             pendingExport = text
+            _exportReady.value = text
             _state.value = TransferState()
         }
     }
@@ -175,6 +180,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                 } catch (e: Exception) { null }
             }
             pendingExport = csv
+            _exportReady.value = csv
             _state.value = TransferState()
         }
     }
@@ -306,6 +312,11 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
     }
 
     /** 单条实体写库；图片占位符 → 落盘本地 + 路径还原 */
+    /** 消费导出就绪事件（防止重复弹窗）；pendingExport 保留给系统保存框回调读取，写盘后由 UI 清空 */
+    fun clearExport() {
+        _exportReady.value = null
+    }
+
     private suspend fun writeEntity(
         context: Context,
         type: String,
