@@ -163,11 +163,24 @@ fun CalendarScreen(
             onSelectDate = { vm.selectDate(it) }
         )
         Spacer(Modifier.height(8.dp))
-        Text(
-            text = selectedDate.format(DateTimeFormatter.ofPattern("M月d日 EEEE")),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 0.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = selectedDate.format(DateTimeFormatter.ofPattern("M月d日 EEEE")),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+            OutlinedButton(onClick = onAddClick) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("新建日程")
+            }
+        }
         Spacer(Modifier.height(4.dp))
         LazyColumn(
             state = eventListState,
@@ -347,6 +360,7 @@ private fun MonthGrid(
                         isToday = date == LocalDate.now(),
                         hasEvents = events.any { isSameDay(it.startTime, date) },
                         hasCountdown = date in countdownDates,
+                        dotColor = events.firstOrNull { isSameDay(it.startTime, date) }?.let { Color(it.color) },
                         onClick = { onSelectDate(date) },
                         modifier = Modifier.weight(1f)
                     )
@@ -371,6 +385,7 @@ private fun MonthGrid(
                             isToday = date == LocalDate.now(),
                             hasEvents = events.any { isSameDay(it.startTime, date) },
                             hasCountdown = date in countdownDates,
+                            dotColor = events.firstOrNull { isSameDay(it.startTime, date) }?.let { Color(it.color) },
                             onClick = { onSelectDate(date) },
                             modifier = Modifier.weight(1f)
                         )
@@ -394,6 +409,7 @@ private fun DayCell(
     isToday: Boolean,
     hasEvents: Boolean,
     hasCountdown: Boolean,
+    dotColor: Color? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -422,12 +438,13 @@ private fun DayCell(
                 fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
             )
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                // 日程标记（主色圆点）
+                // 日程标记（当日首个日程的颜色；无颜色信息时回退主题主色）
                 Box(
                     modifier = Modifier
                         .size(if (hasEvents) 5.dp else 0.dp)
                         .background(
-                            if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                            if (isSelected) MaterialTheme.colorScheme.onPrimary
+                            else dotColor ?: MaterialTheme.colorScheme.primary,
                             CircleShape
                         )
                 )
