@@ -44,6 +44,7 @@ import com.magicnote.mgxd.data.prefs.UserPrefs
 import com.magicnote.mgxd.ui.viewmodel.AiViewModel
 import com.magicnote.mgxd.ui.viewmodel.CalendarViewModel
 import com.magicnote.mgxd.ui.viewmodel.DiaryViewModel
+import com.magicnote.mgxd.ui.viewmodel.DataTransferViewModel
 import com.magicnote.mgxd.ui.viewmodel.SettingsViewModel
 import com.magicnote.mgxd.ui.viewmodel.TodoViewModel
 import com.magicnote.mgxd.ui.viewmodel.appViewModel
@@ -78,6 +79,7 @@ fun AppNav() {
     val diaryVm: DiaryViewModel = appViewModel(DiaryViewModel::class.java) { it.repository.let { r -> DiaryViewModel(r, context.applicationContext) } }
     val aiVm: AiViewModel = appViewModel(AiViewModel::class.java) { it.repository.let { r -> AiViewModel(r) } }
     val settingsVm: SettingsViewModel = appViewModel(SettingsViewModel::class.java) { it.repository.let { r -> SettingsViewModel(r) } }
+    val dataVm: DataTransferViewModel = appViewModel(DataTransferViewModel::class.java) { it.repository.let { r -> DataTransferViewModel(r) } }
 
     // 功能模块开关：关闭的模块从底部导航与首页隐藏
     val moduleCfg by settingsVm.moduleConfig.collectAsStateWithLifecycle()
@@ -137,6 +139,7 @@ fun AppNav() {
                 4 -> AiChatScreen(vm = aiVm)
                 5 -> SettingsScreen(
                     vm = settingsVm,
+                    dataVm = dataVm,
                     onClose = {
                         // 关闭设置：回到第一个非设置的功能页
                         currentTab = visibleTabs.firstOrNull { tabs.indexOf(it) != 5 }?.let { tabs.indexOf(it) } ?: 4
