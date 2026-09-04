@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -107,13 +108,15 @@ fun DataBackupCard(dataVm: DataTransferViewModel) {
         scope.launch {
             busy = true; busyLabel = "读取文件…"; busyProgress = null
             val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                try {
-                    context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                } catch (e: Exception) { null }
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                }.getOrNull()?.let { bytes -> String(bytes, Charsets.UTF_8) }
             }
             busy = false
-            if (text.isNullOrBlank()) {
-                Toast.makeText(context, "无法读取所选文件", Toast.LENGTH_LONG).show()
+            if (text == null) {
+                Toast.makeText(context, "无法读取所选文件，请换一个 .mgxd 备份文件重试", Toast.LENGTH_LONG).show()
+            } else if (text.isBlank()) {
+                Toast.makeText(context, "所选文件为空", Toast.LENGTH_LONG).show()
             } else if (!dataVm.prepareImport(text)) {
                 // magic 校验 / JSON 解析错误 → 无效文件
                 Toast.makeText(context, "无效文件：不是有效的 .mgxd 备份文件", Toast.LENGTH_LONG).show()
@@ -161,47 +164,32 @@ fun DataBackupCard(dataVm: DataTransferViewModel) {
         }
     }
 
-    // ===== 导出选择对话框 =====
+    // 导出编码完成后：自动触发系统保存框（事件单发，无轮询竞态）
+    val exportReady by dataVm.exportReady.collectAsStateWithLifecycle()
+    LaunchedEffect(exportReady) {
+        exportReady?.let {
+            val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.getDefault()).format(Date())
+            if (exportKind == "csv") csvLauncher.launch("MagicNote-$stamp.csv")
+            else exportLauncher.launch("MagicNote-backup-$stamp.mgxd")
+            dataVm.clearExport()
+        }
+    }
+
+// ===== 导出选择对话框 =====
     if (showExportPicker) {
         ExportPickerDialog(
             candidates = dataVm.candidates.collectAsStateWithLifecycle().value,
             onDismiss = { showExportPicker = false },
             onExport = { keys, kind, alpha ->
-                exportKeys = keys; exportKind = kind; preserveAlpha = alpha
+                exportKind = kind
                 showExportPicker = false
-                val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.getDefault()).format(Date())
-                when (kind) {
-                    "csv" -> {
-                        dataVm.prepareCsvExport(keys)
-                        // 轮询等待后台编码完成后打开保存框
-                        scope.launch {
-                            dataVm.state.collect { st ->
-                                if (!st.busy && dataVm.pendingExport != null) {
-                                    csvLauncher.launch("MagicNote-$stamp.csv")
-                                    dataVm.pendingExport = null
-                                    return@collect
-                                }
-                            }
-                        }
-                    }
-                    else -> {
-                        dataVm.prepareMgxdExport(keys, alpha)
-                        scope.launch {
-                            dataVm.state.collect { st ->
-                                if (!st.busy && dataVm.pendingExport != null) {
-                                    exportLauncher.launch("MagicNote-backup-$stamp.mgxd")
-                                    dataVm.pendingExport = null
-                                    return@collect
-                                }
-                            }
-                        }
-                    }
-                }
+                if (kind == "csv") dataVm.prepareCsvExport(keys)
+                else dataVm.prepareMgxdExport(keys, alpha)
             }
         )
     }
 
-    // ===== 导入冲突 / 完成 对话框 =====
+// ===== 导入冲突 / 完成 对话框 =====
     importStage?.let { stage ->
         when (stage) {
             is ImportStage.Review -> ImportReviewDialog(
