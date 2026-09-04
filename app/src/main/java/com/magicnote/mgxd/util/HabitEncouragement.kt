@@ -8,15 +8,22 @@ import java.time.LocalDate
  */
 object HabitEncouragement {
 
-    /** 计算当前连续打卡天数（今天已打卡从今天起算；今天没打卡但从昨天连续也算） */
+    /** 计算当前连续打卡天数（今天已打卡从今天起算；今天没打卡但从昨天连续也算，不视为断签） */
     fun streakOf(dates: List<String>): Int {
         if (dates.isEmpty()) return 0
-        val sorted = dates.sortedDescending()
-        var cursor = LocalDate.parse(sorted.first())
-        // 今天还没打卡不算断签，从昨天开始向前数
-        if (cursor != LocalDate.now()) cursor = cursor.minusDays(1)
+        val set = dates.toHashSet()
+        val today = LocalDate.now()
+        val todayStr = today.toString()
+        val yesterdayStr = today.minusDays(1).toString()
+        // 基准日：今天已打卡 → 从今天向前数；今天还没打但昨天打了 → 从昨天向前数（不算断签）；否则已断签
+        val anchor = when {
+            set.contains(todayStr) -> today
+            set.contains(yesterdayStr) -> today.minusDays(1)
+            else -> return 0
+        }
+        var cursor = anchor
         var streak = 0
-        while (sorted.contains(cursor.toString())) {
+        while (set.contains(cursor.toString())) {
             streak++
             cursor = cursor.minusDays(1)
         }
