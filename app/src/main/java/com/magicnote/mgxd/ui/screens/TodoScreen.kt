@@ -297,7 +297,7 @@ fun TodoScreen(
                                     text = if (tab == 0) {
                                         "今天还没有待办事项\n点击右下角 + 添加第一个任务吧"
                                     } else {
-                                        "还没有长期待办\n适合放持续进行的目标，如「每天背 20 个单词」"
+                                        "还没有长期待办\n适合长期努力达成的目标，如「一年读完 12 本书」"
                                     },
                                     icon = Icons.Outlined.Inbox
                                 )
@@ -1137,7 +1137,7 @@ fun AddTodoDialog(
                     }
                 } else {
                     Text(
-                        "长期待办适合持续进行的目标，如「每天背 20 个单词」",
+                        "长期待办适合长期努力达成的目标，如「一年读完 12 本书」",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.outline
                     )
