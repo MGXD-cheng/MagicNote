@@ -58,11 +58,11 @@ import androidx.compose.ui.unit.dp
 import com.magicnote.mgxd.ai.Personality
 import com.magicnote.mgxd.data.prefs.UserPrefs
 import com.magicnote.mgxd.screentime.ScreenTimeManager
+import com.magicnote.mgxd.ui.viewmodel.DataTransferViewModel
 import com.magicnote.mgxd.ui.viewmodel.SettingsViewModel
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: SettingsViewModel, onClose: () -> Unit = {}) {
+fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose: () -> Unit = {}) {
     val aiConfig by vm.aiConfig.collectAsStateWithLifecycle()
     val notifyConfig by vm.notifyConfig.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -370,6 +370,9 @@ fun SettingsScreen(vm: SettingsViewModel, onClose: () -> Unit = {}) {
                     color = MaterialTheme.colorScheme.outline
                 )
             }
+
+            // ===== 数据备份与迁移 =====
+            DataBackupCard(dataVm)
 
             // ===== 纯净模式 =====
             SectionCard(title = "纯净模式", icon = Icons.Default.PowerSettingsNew) {
