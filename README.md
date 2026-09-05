@@ -1,7 +1,7 @@
 # Magic note
 
 一款集待办、日历、日记与 AI 助手于一体的 Android 效率应用。
-Jetpack Compose + Kotlin 开发，包名 com.magicnote.mgxd，当前版本 6.5。
+Jetpack Compose + Kotlin 开发，包名 com.magicnote.mgxd，当前版本 6.6。
 
 ## 功能
 
@@ -56,6 +56,7 @@ Jetpack Compose + Kotlin 开发，包名 com.magicnote.mgxd，当前版本 6.5�
 - v5.9：AI规划增强（时长估算倒推/强制休息缓冲/精力曲线安排/优先级驱动排序）；日历页适配状态栏高度；每日待办完成后次日自动删除（0点清理+启动/开机/设置恢复兜底）。
 - v6.0：AI规划超时修复（AiClient 支持 per-call 超时、规划放宽到 120s、prompt 精简注入上限 20 待办/30 日程）；性能内存优化（通知渠道只初始化一次、广播协程懒加载复用、批量采纳本地冲突检测、聊天 60s 超时兜底、Gradle 并行+缓存+配置缓存加速构建）。
 - v6.2：AI 稳定性修复 + 日历交互升级。①AiClient 支持 jsonMode 自动降级：不支持的端点去掉 response_format 自动重试一次；AI 规划开启 jsonMode 提高 JSON 输出成功率；一句话建待办 60s 超时兜底降级纯文本。②日历上滑日程列表自动折叠为单周视图，头部按钮可展开/收起。③新增日程专注模式：日程卡点 ⏱ 进入全屏横屏大字时钟（秒级刷新）+ 日程标题 + 距开始/进行中倒计时，左下角截止时间小字、右下角退出按钮，进入屏幕常亮、退出恢复竖屏。
+- v6.6：新增暗色模式（设置→外观：跟随系统/浅色/深色 三档；动态切换、状态栏图标深浅自动适配）；修复日历日程颜色：月视图按每个日程真实颜色逐点显示（不再只显示第一个/默认紫）、编辑日程时保留不在调色板里的自定义色不再被强制改回紫色、渲染前强制 ARGB 不透明防止历史数据透明不可见；品牌标识统一 Linxi/灵犀 → MG/Magic Note（LinxiApp→MGApp、LinxiTheme→MGTheme，Manifest 同步）。
 - v6.5：新增 .mgxd 专属备份格式（JSON+Base64，magic=MGXD/version=1.0/data/images 四顶级字段）。①设置→数据备份与迁移：选择性导出（日程/日记/待办/打卡/倒数日 逐条勾选+全选/取消全选，至少选一项校验）、导入自动合并禁止直接覆盖（冲突弹窗：保留两份/覆盖/跳过/取消）、CSV 通用出口（仅文本、图片列留空）；②图片自动压缩链（JPEG80 → 长边1024 → 长边逐次-10% 直到 <5MB；PNG 透明通道默认补白，可勾选保留透明）；③安全校验 magic 非法弹"无效文件"、JSON 解析全 try-catch 中文提示；④全部文件读写/Base64/压缩放后台线程+进度提示+Bitmap 显式回收。另修复：打卡连续天数漏数昨天、日程颜色在月视图小圆点不随事件色、日历页无"新建日程"按钮（现选中日期右侧有 + 新建日程）、长期待办说明改为"适合长期努力达成的目标"。
 - v6.4：设置新增「模型支持图片识别」开关（设置 → Magic AI 接口配置 → 模型名称下方）。开启后 AI 回复日记时，把日记附带的图片压缩（长边1024/JPEG80）成 base64 data URL，以 OpenAI vision 多模态格式（content 数组：text + image_url）连同文字一起注入识别；关闭则纯文本。需模型支持视觉（如 gpt-4o / qwen-vl）。AiClient.ChatMessage 自定义序列化器：无图时 content 输出普通字符串（完全向后兼容），有图时输出 vision 数组格式。
 - v6.3：性能评估优化（auditing-compose-performance skill）。①启用 R8 全量优化 + 资源压缩（isMinifyEnabled/isShrinkResources=true，proguard 补 kotlinx.serialization/Room keep 规则）——启动 AOT 加速、APK 大幅瘦身；②Flow 收集全部升级 collectAsStateWithLifecycle（生命周期感知，后台不重组）；③AiChat 列表补 key、Diary 分组/Home 过滤加 remember 缓存；④开启 Compose Compiler reports（build/compose_compiler_reports/ 稳定性诊断）。
