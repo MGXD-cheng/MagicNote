@@ -51,7 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.magicnote.mgxd.LinxiApp
+import com.magicnote.mgxd.MGApp
 import com.magicnote.mgxd.data.db.CalendarEventEntity
 import com.magicnote.mgxd.data.db.CountdownEntity
 import com.magicnote.mgxd.data.db.DiaryEntity
@@ -102,7 +102,7 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         screenHasAccess = ScreenTimeManager.hasUsageAccess(context)
         if (screenHasAccess) {
-            val app = context.applicationContext as LinxiApp
+            val app = context.applicationContext as MGApp
             val repo = app.container.repository
             val overrides = repo.categoryOverrides.first()
             val cal = Calendar.getInstance().apply {
