@@ -3,7 +3,7 @@ package com.magicnote.mgxd.notify
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.magicnote.mgxd.LinxiApp
+import com.magicnote.mgxd.MGApp
 import com.magicnote.mgxd.ai.AiClient
 import com.magicnote.mgxd.ai.AiPrompter
 import com.magicnote.mgxd.ai.Personality
@@ -34,7 +34,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 // 总超时兜底：防止极端情况下（usage 查询慢 + AI 超时叠加）广播 ANR
                 withTimeoutOrNull(BROADCAST_TIMEOUT_MS) {
                     // 纯净模式：所有后台任务关闭，残留闹钟直接忽略
-                    val app = context.applicationContext as LinxiApp
+                    val app = context.applicationContext as MGApp
                     if (app.container.repository.pureMode.first()) return@withTimeoutOrNull
                     when (intent.action) {
                         ReminderScheduler.ACTION_TODO_REMIND -> {
@@ -78,14 +78,14 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     private suspend fun handleTodoRemind(context: Context, todoId: Long) {
-        val app = context.applicationContext as LinxiApp
+        val app = context.applicationContext as MGApp
         val todo = app.container.repository.getTodo(todoId) ?: return
         if (todo.completed) return // 已完成就不再提醒
         NotificationHelper.showTodoReminder(context, todo)
     }
 
     private suspend fun handleDailySummary(context: Context) {
-        val app = context.applicationContext as LinxiApp
+        val app = context.applicationContext as MGApp
         val repo = app.container.repository
 
         val config = repo.notifyConfig.collectAsValue()
@@ -150,7 +150,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     /** 每日 22:00 屏幕时间日报告（无论成败都重排下一天，保证闹钟不断） */
     private suspend fun handleDailyScreenReport(context: Context) {
-        val app = context.applicationContext as LinxiApp
+        val app = context.applicationContext as MGApp
         val repo = app.container.repository
         try {
             val config = repo.screenTimeConfig.collectAsValue()
@@ -175,7 +175,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     /** 每周日 08:00 屏幕时间周报告（生成后重排下一周） */
     private suspend fun handleWeeklyScreenReport(context: Context) {
-        val app = context.applicationContext as LinxiApp
+        val app = context.applicationContext as MGApp
         val repo = app.container.repository
         try {
             val config = repo.screenTimeConfig.collectAsValue()
@@ -199,7 +199,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     /** 每日 0 点待办清理：删除昨天及以前已完成今日待办（未完成的保留并红字标注，由 UI 展示） */
     private suspend fun handleDailyCleanup(context: Context) {
-        val app = context.applicationContext as LinxiApp
+        val app = context.applicationContext as MGApp
         val repo = app.container.repository
         val cal = java.util.Calendar.getInstance().apply {
             set(java.util.Calendar.HOUR_OF_DAY, 0)
@@ -213,7 +213,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     /** 每日打卡提醒：到点通知 + 重排明天 */
     private suspend fun handleHabitRemind(context: Context, intent: Intent) {
-        val app = context.applicationContext as LinxiApp
+        val app = context.applicationContext as MGApp
         val repo = app.container.repository
         val habitId = intent.getLongExtra(ReminderScheduler.EXTRA_HABIT_ID, -1L)
         if (habitId <= 0) return
@@ -226,7 +226,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     /** 日程提前提醒：到点通知（一次性，无需重排） */
     private suspend fun handleEventRemind(context: Context, intent: Intent) {
-        val app = context.applicationContext as LinxiApp
+        val app = context.applicationContext as MGApp
         val repo = app.container.repository
         val eventId = intent.getLongExtra(ReminderScheduler.EXTRA_EVENT_ID, -1L)
         if (eventId <= 0) return
