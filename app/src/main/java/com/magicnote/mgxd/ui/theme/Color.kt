@@ -2,7 +2,7 @@ package com.magicnote.mgxd.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// 灵犀品牌色：靛蓝紫 + 柔和的辅助色
+// MG品牌色：靛蓝紫 + 柔和的辅助色
 val Primary40 = Color(0xFF5B4DC7)
 val Primary80 = Color(0xFFC6BDFF)
 val PrimaryContainer40 = Color(0xFFE8DEFF)
