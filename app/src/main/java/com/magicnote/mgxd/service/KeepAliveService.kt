@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import androidx.core.content.ContextCompat
-import com.magicnote.mgxd.LinxiApp
+import com.magicnote.mgxd.MGApp
 import com.magicnote.mgxd.ai.AiClient
 import com.magicnote.mgxd.ai.AiPrompter
 import com.magicnote.mgxd.ai.Personality
@@ -91,7 +91,7 @@ class KeepAliveService : Service() {
 
     private suspend fun runChecks() {
         // 纯净模式：后台功能全部关闭，直接跳过
-        val app = applicationContext as LinxiApp
+        val app = applicationContext as MGApp
         val repo = app.container.repository
         if (repo.pureMode.first()) return
 
