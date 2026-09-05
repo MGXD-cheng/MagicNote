@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Notifications
@@ -120,6 +121,36 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // ===== 外观 =====
+            SectionCard(title = "外观", icon = Icons.Default.DarkMode) {
+                val themeMode by vm.themeMode.collectAsStateWithLifecycle()
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("主题模式", style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val options = listOf(
+                            "system" to "跟随系统",
+                            "light" to "浅色",
+                            "dark" to "深色"
+                        )
+                        options.forEach { (mode, label) ->
+                            OutlinedButton(
+                                onClick = { vm.setThemeMode(mode) },
+                                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (themeMode == mode) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surface
+                                ),
+                                modifier = Modifier.weight(1f)
+                            ) { Text(label) }
+                        }
+                    }
+                    Text(
+                        "深色模式夜间更护眼；「跟随系统」会随手机系统自动切换",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+
             // ===== AI 配置 =====
             SectionCard(title = "Magic AI 接口配置", icon = Icons.Default.Key) {
                 OutlinedTextField(
