@@ -51,6 +51,9 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
     private val _modelVision = MutableStateFlow(false)
     val modelVision: StateFlow<Boolean> = _modelVision.asStateFlow()
 
+    private val _themeMode = MutableStateFlow("system")
+    val themeMode: StateFlow<String> = _themeMode.asStateFlow()
+
     init {
         viewModelScope.launch { repo.aiConfig.collect { _aiConfig.value = it } }
         viewModelScope.launch { repo.notifyConfig.collect { _notifyConfig.value = it } }
@@ -60,6 +63,7 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.moduleConfig.collect { _moduleConfig.value = it } }
         viewModelScope.launch { repo.diaryAutoReply.collect { _diaryAutoReply.value = it } }
         viewModelScope.launch { repo.modelVision.collect { _modelVision.value = it } }
+        viewModelScope.launch { repo.themeMode.collect { _themeMode.value = it } }
     }
 
     /** 刷新今日屏幕时间统计（IO 查询，需使用情况访问权限） */
@@ -161,5 +165,9 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch {
             repo.saveModelVision(enabled)
         }
+    }
+    /** 外观主题：system=跟随系统 / light=浅色 / dark=深色 */
+    fun setThemeMode(mode: String) {
+        viewModelScope.launch { repo.saveThemeMode(mode) }
     }
 }
