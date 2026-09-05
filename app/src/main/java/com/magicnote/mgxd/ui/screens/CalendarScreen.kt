@@ -360,7 +360,7 @@ private fun MonthGrid(
                         isToday = date == LocalDate.now(),
                         hasEvents = events.any { isSameDay(it.startTime, date) },
                         hasCountdown = date in countdownDates,
-                        dotColor = events.firstOrNull { isSameDay(it.startTime, date) }?.let { Color(it.color) },
+                        eventColors = events.filter { isSameDay(it.startTime, date) }.map { Color(it.color.toOpaqueArgb()) },
                         onClick = { onSelectDate(date) },
                         modifier = Modifier.weight(1f)
                     )
@@ -385,7 +385,7 @@ private fun MonthGrid(
                             isToday = date == LocalDate.now(),
                             hasEvents = events.any { isSameDay(it.startTime, date) },
                             hasCountdown = date in countdownDates,
-                            dotColor = events.firstOrNull { isSameDay(it.startTime, date) }?.let { Color(it.color) },
+                            eventColors = events.filter { isSameDay(it.startTime, date) }.map { Color(it.color.toOpaqueArgb()) },
                             onClick = { onSelectDate(date) },
                             modifier = Modifier.weight(1f)
                         )
@@ -409,7 +409,7 @@ private fun DayCell(
     isToday: Boolean,
     hasEvents: Boolean,
     hasCountdown: Boolean,
-    dotColor: Color? = null,
+    eventColors: List<Color> = emptyList(),
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -438,22 +438,29 @@ private fun DayCell(
                 fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
             )
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                // 日程标记（当日首个日程的颜色；无颜色信息时回退主题主色）
-                Box(
-                    modifier = Modifier
-                        .size(if (hasEvents) 5.dp else 0.dp)
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.onPrimary
-                            else dotColor ?: MaterialTheme.colorScheme.primary,
-                            CircleShape
-                        )
-                )
+                // 日程标记：当日每个日程按各自颜色点亮（最多 4 个），不再只显示第一个
+                val dots = if (isSelected) eventColors.map { MaterialTheme.colorScheme.onPrimary } else eventColors
+                dots.take(4).forEach { dotColor ->
+                    Box(
+                        modifier = Modifier
+                            .size(if (hasEvents) 5.dp else 0.dp)
+                            .background(
+                                dotColor.let { c ->
+                                    // 不透明化，杜绝历史数据透明不可见
+                                    Color(c.red, c.green, c.blue)
+                                },
+                                CircleShape
+                            )
+                    )
+                }
+                if (!hasEvents) {
+                    // 无日程但保留占位，避免行高跳动
+                    Box(modifier = Modifier.size(5.dp))
+                }
                 // 倒数日标记（红色圆点）
-                Box(
-                    modifier = Modifier
-                        .size(if (hasCountdown) 5.dp else 0.dp)
-                        .background(COUNTDOWN_RED, CircleShape)
-                )
+                if (hasCountdown) {
+                    Box(modifier = Modifier.size(5.dp).background(COUNTDOWN_RED, CircleShape))
+                }
             }
         }
     }
@@ -769,7 +776,10 @@ fun AddEventDialog(
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
     var startTime by remember(initialStart) { mutableStateOf(initialStart) }
     var endTime by remember(initialEnd) { mutableStateOf(initialEnd) }
-    var colorIndex by remember(initialColor) { mutableStateOf(EVENT_COLORS.indexOfFirst { it.value.toInt() == initialColor }.coerceAtLeast(0)) }
+    // 匹配调色板；不在调色板里的历史颜色保留为 customColor，避免一编辑就被强制回默认紫
+    val initialColorIdx = initialColor?.let { c -> EVENT_COLORS.indexOfFirst { it.value.toInt() == c } } ?: -1
+    var colorIndex by remember(initialColor) { mutableStateOf(initialColorIdx) }
+    var customColor by remember(initialColor) { mutableStateOf(initialColor?.takeIf { initialColorIdx < 0 }) }
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
     var remindMinutes by remember(initialRemindMinutes) { mutableStateOf(initialRemindMinutes) }
@@ -816,7 +826,7 @@ fun AddEventDialog(
                 Column {
                     Text("颜色", style = MaterialTheme.typography.labelMedium)
                     Spacer(Modifier.height(4.dp))
-                    ColorSelector(selected = colorIndex, onSelect = { colorIndex = it })
+                    ColorSelector(selected = colorIndex, onSelect = { colorIndex = it; customColor = null })
                 }
             }
         },
@@ -824,7 +834,13 @@ fun AddEventDialog(
             Button(
                 onClick = {
                     if (title.isNotBlank() && end > start) {
-                        onConfirm(title.trim(), start, end, description.trim().ifBlank { null }, EVENT_COLORS[colorIndex].value.toInt(), remindMinutes)
+                        onConfirm(
+                            title.trim(), start, end, description.trim().ifBlank { null },
+                            // 选中调色板色；否则沿用原自定义色（并强制不透明，避免历史数据 alpha 丢失变不可见）
+                            (if (colorIndex >= 0) EVENT_COLORS[colorIndex].value.toInt()
+                            else customColor ?: EVENT_COLORS[0].value.toInt()).toOpaqueArgb(),
+                            remindMinutes
+                        )
                     }
                 },
                 enabled = title.isNotBlank() && end > start
@@ -1018,3 +1034,7 @@ private fun FocusModeScreen(
         }
     }
 }
+
+/** 强制 ARGB 不透明：历史数据若丢了 alpha 位会整色透明不可见，渲染前统一补上 */
+private fun Int.toOpaqueArgb(): Int =
+    if (this ushr 24 == 0) (this and 0x00FFFFFF) or (0xFF shl 24) else this
