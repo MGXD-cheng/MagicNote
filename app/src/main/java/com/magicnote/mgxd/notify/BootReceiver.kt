@@ -3,7 +3,7 @@ package com.magicnote.mgxd.notify
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.magicnote.mgxd.LinxiApp
+import com.magicnote.mgxd.MGApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,7 +21,7 @@ class BootReceiver : BroadcastReceiver() {
         val result = goAsync()
         scope.launch {
             try {
-                val app = context.applicationContext as LinxiApp
+                val app = context.applicationContext as MGApp
                 ReminderScheduler.rescheduleAll(context, app.container.repository)
                 // 纯净模式：不拉起后台守护
                 if (!app.container.repository.pureMode.first()) {
