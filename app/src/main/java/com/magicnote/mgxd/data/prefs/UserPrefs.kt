@@ -46,6 +46,7 @@ class UserPrefs(private val context: Context) {
         private val KEY_DIARY_ENABLED = booleanPreferencesKey("diary_enabled")
         private val KEY_DIARY_AUTO_REPLY = booleanPreferencesKey("diary_auto_reply")
         private val KEY_MODEL_VISION = booleanPreferencesKey("model_vision")
+        private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
 
         private val json = Json { ignoreUnknownKeys = true }
 
@@ -179,6 +180,14 @@ class UserPrefs(private val context: Context) {
         context.dataStore.edit { p -> p[KEY_PURE_MODE] = enabled }
     }
 
+    // ---------- 外观：主题模式 ----------
+    /** 主题模式：system=跟随系统 / light=浅色 / dark=深色 */
+    val themeMode: Flow<String> = context.dataStore.data.map { p ->
+        p[KEY_THEME_MODE] ?: "system"
+    }
+    suspend fun saveThemeMode(mode: String) {
+        context.dataStore.edit { p -> p[KEY_THEME_MODE] = mode }
+    }
     // ---------- 功能模块开关 ----------
     val moduleConfig: Flow<ModuleConfig> = context.dataStore.data.map { p ->
         ModuleConfig(
