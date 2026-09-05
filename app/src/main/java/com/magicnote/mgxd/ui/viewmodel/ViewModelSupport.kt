@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.magicnote.mgxd.AppContainer
-import com.magicnote.mgxd.LinxiApp
+import com.magicnote.mgxd.MGApp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
@@ -16,7 +16,7 @@ fun <T : ViewModel> appViewModel(
     modelClass: Class<T>,
     create: (AppContainer) -> T
 ): T {
-    val app = LocalContext.current.applicationContext as LinxiApp
+    val app = LocalContext.current.applicationContext as MGApp
     val owner = checkNotNull(LocalViewModelStoreOwner.current) { "No ViewModelStoreOwner in composition" }
     val factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
