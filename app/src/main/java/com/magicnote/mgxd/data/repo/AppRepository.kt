@@ -82,6 +82,7 @@ suspend fun clearChats() = db.chatDao().clearAll()
     val categoryOverrides get() = prefs.categoryOverrides
     val pureMode get() = prefs.pureMode
     val moduleConfig get() = prefs.moduleConfig
+    val themeMode get() = prefs.themeMode
     suspend fun saveAiConfig(
         baseUrl: String, apiKey: String, model: String,
         personalityId: String, customPrompt: String
@@ -96,6 +97,7 @@ suspend fun clearChats() = db.chatDao().clearAll()
         prefs.saveScreenTimeConfig(enabled, thresholdMinutes)
 
     suspend fun savePureMode(enabled: Boolean) = prefs.savePureMode(enabled)
+    suspend fun saveThemeMode(mode: String) = prefs.saveThemeMode(mode)
 
     suspend fun saveModuleConfig(todoEnabled: Boolean, calendarEnabled: Boolean, diaryEnabled: Boolean) =
         prefs.saveModuleConfig(todoEnabled, calendarEnabled, diaryEnabled)
