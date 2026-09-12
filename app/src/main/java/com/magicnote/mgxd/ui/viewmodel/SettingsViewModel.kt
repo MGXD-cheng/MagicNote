@@ -3,6 +3,7 @@ package com.magicnote.mgxd.ui.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.magicnote.mgxd.ai.AiClient
 import com.magicnote.mgxd.data.prefs.UserPrefs
 import com.magicnote.mgxd.data.repo.AppRepository
 import com.magicnote.mgxd.notify.ReminderScheduler
@@ -53,6 +54,14 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
 
     private val _themeMode = MutableStateFlow("system")
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
+
+    // ---------- 模型列表（按当前 Base URL 自动拉取） ----------
+    private val _modelList = MutableStateFlow<List<String>?>(null)
+    val modelList: StateFlow<List<String>?> = _modelList.asStateFlow()
+    private val _modelListLoading = MutableStateFlow(false)
+    val modelListLoading: StateFlow<Boolean> = _modelListLoading.asStateFlow()
+    private val _modelListError = MutableStateFlow<String?>(null)
+    val modelListError: StateFlow<String?> = _modelListError.asStateFlow()
 
     init {
         viewModelScope.launch { repo.aiConfig.collect { _aiConfig.value = it } }
@@ -170,4 +179,28 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
     fun setThemeMode(mode: String) {
         viewModelScope.launch { repo.saveThemeMode(mode) }
     }
+
+    /** 按当前 Base URL 拉取该站点可用模型列表（结果通过 modelList 弹窗选择） */
+    fun fetchModelList(baseUrl: String, apiKey: String) {
+        if (_modelListLoading.value) return
+        viewModelScope.launch {
+            _modelListLoading.value = true
+            _modelListError.value = null
+            try {
+                val list = AiClient().fetchModels(baseUrl, apiKey)
+                if (list.isEmpty()) {
+                    _modelListError.value = "未获取到模型列表，请检查 Base URL"
+                } else {
+                    _modelList.value = list
+                }
+            } catch (e: Exception) {
+                _modelListError.value = e.message ?: "获取模型列表失败"
+            } finally {
+                _modelListLoading.value = false
+            }
+        }
+    }
+
+    fun clearModelList() { _modelList.value = null }
+    fun clearModelListError() { _modelListError.value = null }
 }
