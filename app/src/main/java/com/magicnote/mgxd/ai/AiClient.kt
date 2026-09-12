@@ -20,6 +20,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import okhttp3.Call
 import okhttp3.Callback
@@ -178,6 +179,83 @@ class AiClient {
                 throw e
             }
         }
+    }
+
+    /**
+     * 拉取当前 Base URL 站点的可用模型列表（OpenAI 兼容 GET {base}/models）
+     *
+     * 兼容：base 未带 /v1 时自动补试（含 /api/v1 变体）；
+     * 响应支持 {"data":[{id}]}、{"models":[...]}、纯字符串数组等多种格式。
+     *
+     * @throws AiException 所有候选地址均失败/无法解析时
+     */
+    suspend fun fetchModels(
+        baseUrl: String,
+        apiKey: String,
+        timeoutSeconds: Long = 20
+    ): List<String> = withContext(Dispatchers.IO) {
+        val base = baseUrl.trim().trimEnd('/')
+        if (base.isBlank()) throw AiException("请先填写 API Base URL")
+        val candidates = linkedSetOf("$base/models")
+        if (!base.endsWith("/v1")) {
+            candidates.add("$base/v1/models")
+            candidates.add("$base/api/v1/models")
+        }
+        val client = sharedClient.newBuilder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
+            .build()
+        var lastError: String? = null
+        for (url in candidates) {
+            try {
+                val ids = parseModelIds(getText(client, url, apiKey))
+                if (ids.isNotEmpty()) return@withContext ids
+                lastError = "接口可访问但未解析到模型（响应格式不兼容）"
+            } catch (e: AiException) {
+                lastError = e.message
+            } catch (e: Exception) {
+                lastError = e.message ?: e.toString()
+            }
+        }
+        throw AiException(lastError ?: "获取模型列表失败")
+    }
+
+    private fun getText(client: OkHttpClient, url: String, apiKey: String): String {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .apply { if (apiKey.isNotBlank()) header("Authorization", "Bearer ${apiKey.trim()}") }
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) throw AiException("请求失败(${response.code})：${body.take(180)}")
+            return body
+        }
+    }
+
+    /** 解析模型 id 列表：data[] / models[] / 字符串数组 均兼容 */
+    private fun parseModelIds(text: String): List<String> {
+        val root = try {
+            Json.parseToJsonElement(text)
+        } catch (e: Exception) {
+            return emptyList()
+        }
+        val array: JsonArray = when (root) {
+            is JsonArray -> root
+            is JsonObject -> (root["data"] as? JsonArray)
+                ?: (root["models"] as? JsonArray)
+                ?: return emptyList()
+            else -> return emptyList()
+        }
+        return array.mapNotNull { element ->
+            when (element) {
+                is JsonPrimitive -> element.contentOrNull?.takeIf { it.isNotBlank() }
+                is JsonObject -> listOf("id", "name", "model").firstNotNullOfOrNull { key ->
+                    (element[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+                }
+                else -> null
+            }
+        }.distinct()
     }
 
     private suspend fun requestOnce(
