@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -26,11 +29,13 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -55,6 +60,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.magicnote.mgxd.ai.Personality
 import com.magicnote.mgxd.data.prefs.UserPrefs
@@ -177,6 +183,67 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                // 一键拉取当前 Base URL 站点的模型列表
+                val modelListLoading by vm.modelListLoading.collectAsStateWithLifecycle()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { vm.fetchModelList(baseUrl, apiKey) },
+                        enabled = !modelListLoading && baseUrl.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (modelListLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("获取中…")
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("获取模型列表")
+                        }
+                    }
+                }
+                Text(
+                    "点击后按当前 Base URL 自动拉取该站点支持的模型名，选中即自动填入上方",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                val modelOptions by vm.modelList.collectAsStateWithLifecycle()
+                val modelListError by vm.modelListError.collectAsStateWithLifecycle()
+                val settingsContext = LocalContext.current
+                LaunchedEffect(modelListError) {
+                    val err = modelListError
+                    if (err != null) {
+                        Toast.makeText(settingsContext, err, Toast.LENGTH_LONG).show()
+                        vm.clearModelListError()
+                    }
+                }
+                modelOptions?.let { options ->
+                    AlertDialog(
+                        onDismissRequest = { vm.clearModelList() },
+                        title = { Text("选择模型（共 ${options.size} 个）") },
+                        text = {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 360.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                options.forEach { name ->
+                                    TextButton(
+                                        onClick = { model = name; vm.clearModelList() },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) { Text(name, modifier = Modifier.fillMaxWidth()) }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { vm.clearModelList() }) { Text("取消") }
+                        }
+                    )
+                }
                 // 模型支持图片识别：开启后注入日记时连同日记图片一起识别
                 val modelVision by vm.modelVision.collectAsStateWithLifecycle()
                 Spacer(Modifier.height(10.dp))
