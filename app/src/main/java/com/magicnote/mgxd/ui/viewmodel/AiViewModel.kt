@@ -106,7 +106,8 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
                     screenTimeSummary = screenTimeSummary,
                     todoEnabled = moduleCfg.todoEnabled,
                     calendarEnabled = moduleCfg.calendarEnabled,
-                    diaryEnabled = moduleCfg.diaryEnabled
+                    diaryEnabled = moduleCfg.diaryEnabled,
+                    userQuery = text
                 )
 
                 // 历史上下文（Room 流异步更新，这里手动拼上刚发的消息，确保 AI 看得到）
