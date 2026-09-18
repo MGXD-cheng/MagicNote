@@ -41,6 +41,11 @@ class UserPrefs(private val context: Context) {
         private val KEY_AI_TODO_REMIND_AT = longPreferencesKey("ai_todo_remind_at")
         private val KEY_CATEGORY_OVERRIDES = stringPreferencesKey("category_overrides")
         private val KEY_PURE_MODE = booleanPreferencesKey("pure_mode")
+        // ---- 日记锁 ----
+        private val KEY_DIARY_LOCK_ENABLED = booleanPreferencesKey("diary_lock_enabled")
+        private val KEY_DIARY_LOCK_MODE = stringPreferencesKey("diary_lock_mode")
+        private val KEY_DIARY_LOCK_HASH = stringPreferencesKey("diary_lock_hash")
+        private val KEY_DIARY_LOCK_SALT = stringPreferencesKey("diary_lock_salt")
         private val KEY_TODO_ENABLED = booleanPreferencesKey("todo_enabled")
         private val KEY_CALENDAR_ENABLED = booleanPreferencesKey("calendar_enabled")
         private val KEY_DIARY_ENABLED = booleanPreferencesKey("diary_enabled")
@@ -178,6 +183,31 @@ class UserPrefs(private val context: Context) {
 
     suspend fun savePureMode(enabled: Boolean) {
         context.dataStore.edit { p -> p[KEY_PURE_MODE] = enabled }
+    }
+
+    // ---------------- 日记锁 ----------------
+    /** 是否启用日记锁 */
+    val diaryLockEnabled: Flow<Boolean> = context.dataStore.data.map { p ->
+        p[KEY_DIARY_LOCK_ENABLED] ?: false
+    }
+    /** 解锁方式：password（数字密码） / biometric（指纹·人脸·设备锁） */
+    val diaryLockMode: Flow<String> = context.dataStore.data.map { p ->
+        p[KEY_DIARY_LOCK_MODE] ?: "password"
+    }
+    val diaryLockHash: Flow<String?> = context.dataStore.data.map { p -> p[KEY_DIARY_LOCK_HASH] }
+    val diaryLockSalt: Flow<String?> = context.dataStore.data.map { p -> p[KEY_DIARY_LOCK_SALT] }
+
+    /**
+     * 保存日记锁配置
+     * @param hash/salt 为 null 时保留原有密码（只切换开关或方式）
+     */
+    suspend fun saveDiaryLock(enabled: Boolean, mode: String, hash: String? = null, salt: String? = null) {
+        context.dataStore.edit { p ->
+            p[KEY_DIARY_LOCK_ENABLED] = enabled
+            p[KEY_DIARY_LOCK_MODE] = mode
+            if (hash != null) p[KEY_DIARY_LOCK_HASH] = hash
+            if (salt != null) p[KEY_DIARY_LOCK_SALT] = salt
+        }
     }
 
     // ---------- 外观：主题模式 ----------
