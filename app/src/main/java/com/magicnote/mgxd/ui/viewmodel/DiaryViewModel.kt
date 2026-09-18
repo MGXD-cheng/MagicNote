@@ -9,6 +9,7 @@ import com.magicnote.mgxd.ai.Personality
 import com.magicnote.mgxd.data.db.DiaryEntity
 import com.magicnote.mgxd.data.repo.AppRepository
 import com.magicnote.mgxd.notify.NotificationHelper
+import com.magicnote.mgxd.util.DiaryLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +30,12 @@ class DiaryViewModel(
     private val _diaries = MutableStateFlow<List<DiaryEntity>>(emptyList())
     val diaries: StateFlow<List<DiaryEntity>> = _diaries.asStateFlow()
 
+    // ---- 日记锁状态 ----
+    private val _lockEnabled = MutableStateFlow(false)
+    val lockEnabled: StateFlow<Boolean> = _lockEnabled.asStateFlow()
+    private val _lockMode = MutableStateFlow("password")
+    val lockMode: StateFlow<String> = _lockMode.asStateFlow()
+
     private val client = AiClient()
     private val dateTimeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd EEE")
 
@@ -37,6 +44,21 @@ class DiaryViewModel(
             repo.observeDiaries().collect { _diaries.value = it }
         }
     }
+
+    init {
+        viewModelScope.launch { repo.diaryLockEnabled.collect { _lockEnabled.value = it } }
+        viewModelScope.launch { repo.diaryLockMode.collect { _lockMode.value = it } }
+    }
+
+    /** 校验数字密码（与保存的盐 + 哈希比对） */
+    suspend fun verifyPassword(input: String): Boolean {
+        val salt = repo.diaryLockSalt.first() ?: return false
+        val hash = repo.diaryLockHash.first() ?: return false
+        return DiaryLock.hash(input, salt) == hash
+    }
+
+    /** 是否已设置过密码 */
+    suspend fun hasPassword(): Boolean = !repo.diaryLockHash.first().isNullOrBlank()
 
     fun saveDiary(date: Long, existing: DiaryEntity?, title: String?, content: String, mood: Int, imagePaths: List<String> = emptyList()) {
         viewModelScope.launch {
