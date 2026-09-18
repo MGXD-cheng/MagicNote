@@ -140,8 +140,18 @@ object AiPrompter {
         }
     }
 
-    /** 渲染日记 XML（动态区；enabled=false 时只注入 hidden/disabled 摘要） */
-    private fun renderDiaries(diaries: List<DiaryEntity>, enabled: Boolean = true): String = buildString {
+    /**
+     * 渲染日记 XML（动态区；enabled=false 时只注入 hidden/disabled 摘要）
+     *
+     * userQuery 非空且用户明显在问日记/某一天时，改为注入「相关日记全文」
+     * （最多 10 篇、每篇 4000 字），解决以往只给最近 3 篇 + 每篇 60 字预览导致
+     * 「单篇日记读取不全 / 看不到指定日期」的问题；普通提问仍用轻量预览省 token。
+     */
+    private fun renderDiaries(
+        diaries: List<DiaryEntity>,
+        enabled: Boolean = true,
+        userQuery: String? = null
+    ): String = buildString {
         if (!enabled) {
             if (diaries.isEmpty()) {
                 append("<diary status='disabled' note='日记功能已在设置中关闭，无历史数据' />")
@@ -159,22 +169,70 @@ object AiPrompter {
             append("<diary status='empty' />")
             return@buildString
         }
-        diaries.take(3).forEach { d ->
-            val mood = when (d.mood) {
-                0 -> "😞"; 1 -> "😐"; 2 -> "🙂"; 3 -> "😄"; 4 -> "🤩"; else -> "🙂"
+        val sorted = diaries.sortedByDescending { it.date }
+        val wantsDetail = userQuery != null &&
+            (userQuery.contains("日记") || DATE_HINT.containsMatchIn(userQuery))
+        if (wantsDetail) {
+            val matched = sorted.filter { queryMatchesDate(userQuery!!, it.date) }
+            val list = (if (matched.isNotEmpty()) matched else sorted).take(10)
+            append("    <diary mode='full' count='")
+            append(list.size)
+            append("' note='用户正在查看日记，下面是逐篇全文（每篇最多 4000 字），请基于全文回答，不要凭空补充'>")
+            appendLine()
+            list.forEach { d ->
+                append("        <diary date='")
+                append(d.date.toDateStr())
+                append("' mood='")
+                append(moodEmoji(d.mood))
+                append("' title='")
+                append(xmlEscape(d.title.orEmpty()))
+                append("'>")
+                append(xmlEscape(d.content.take(4000)))
+                appendLine("</diary>")
             }
-            val preview = xmlEscape(d.content.replace("\n", " ").take(60))
-            val more = if (d.content.length > 60) "…" else String()
-            append("    <diary date='")
+            return@buildString
+        }
+        append("    <diary mode='recent' limit='5'>")
+        appendLine()
+        sorted.take(5).forEach { d ->
+            val preview = xmlEscape(d.content.replace("\n", " ").take(120))
+            val more = if (d.content.length > 120) "…" else String()
+            append("        <diary date='")
             append(d.date.toDateStr())
             append("' mood='")
-            append(mood)
+            append(moodEmoji(d.mood))
             append("'>")
             append(preview)
             append(more)
             appendLine("</diary>")
         }
     }
+
+    private fun moodEmoji(mood: Int): String = when (mood) {
+        0 -> "😞"; 1 -> "😐"; 2 -> "🙂"; 3 -> "😄"; 4 -> "🤩"; else -> "🙂"
+    }
+
+    /** 用户问句里是否点到了某一天（9月3日/9月3号/9-3/9/3/2026-09-03/今天/昨天/前天） */
+    private fun queryMatchesDate(query: String, millis: Long): Boolean {
+        val zone = java.time.ZoneId.systemDefault()
+        val d = java.time.Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
+        val today = java.time.LocalDate.now(zone)
+        when {
+            query.contains("今天") -> return d == today
+            query.contains("昨天") -> return d == today.minusDays(1)
+            query.contains("前天") -> return d == today.minusDays(2)
+        }
+        val forms = listOf(
+            "${d.monthValue}月${d.dayOfMonth}日",
+            "${d.monthValue}月${d.dayOfMonth}号",
+            "${d.monthValue}-${d.dayOfMonth}",
+            "${d.monthValue}/${d.dayOfMonth}",
+            d.toString()
+        )
+        return forms.any { query.contains(it) }
+    }
+
+    private val DATE_HINT = Regex("(\\d{1,2}\\s*[月/-]\\s*\\d{1,2})|(今天|昨天|前天)")
 
     /** 渲染屏幕时间 XML（动态区，可选；授权后才有数据） */
     private fun renderScreenTime(summary: String?): String =
@@ -197,7 +255,8 @@ object AiPrompter {
         screenTimeSummary: String? = null,
         todoEnabled: Boolean = true,
         calendarEnabled: Boolean = true,
-        diaryEnabled: Boolean = true
+        diaryEnabled: Boolean = true,
+        userQuery: String? = null
     ): String {
         val base = if (customPrompt.isNotBlank()) customPrompt else personality.systemPrompt
         return buildString {
@@ -243,7 +302,7 @@ object AiPrompter {
             appendLine()
             appendLine("    </events>")
             appendLine("    <diaries>")
-            append(renderDiaries(recentDiaries, diaryEnabled))
+            append(renderDiaries(recentDiaries, diaryEnabled, userQuery))
             appendLine()
             appendLine("    </diaries>")
             appendLine(renderScreenTime(screenTimeSummary))
