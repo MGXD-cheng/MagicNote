@@ -1,5 +1,12 @@
 package com.magicnote.mgxd.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.magicnote.mgxd.util.DiaryLock
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -48,6 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -70,6 +78,19 @@ fun DiaryScreen(
     onAddClick: () -> Unit,
     onEditClick: (DiaryEntity) -> Unit
 ) {
+    // 日记锁：开启后需先验证（数字密码 / 指纹·人脸·设备锁）
+    val lockEnabled by vm.lockEnabled.collectAsStateWithLifecycle()
+    val lockMode by vm.lockMode.collectAsStateWithLifecycle()
+    var unlocked by remember { mutableStateOf(false) }
+    if (lockEnabled && !unlocked) {
+        DiaryLockScreen(
+            mode = lockMode,
+            verifyPassword = { pwd -> vm.verifyPassword(pwd) },
+            onUnlocked = { unlocked = true }
+        )
+        return
+    }
+
     val diaries by vm.diaries.collectAsStateWithLifecycle()
     var deleteTarget by remember { mutableStateOf<DiaryEntity?>(null) }
 
@@ -401,6 +422,147 @@ private fun DiaryThumb(path: String, onClick: () -> Unit) {
                     modifier = Modifier.size(12.dp),
                     tint = MaterialTheme.colorScheme.onError
                 )
+            }
+        }
+    }
+}
+
+// ==================== 日记锁屏 ====================
+@Composable
+private fun DiaryLockScreen(
+    mode: String,
+    verifyPassword: suspend (String) -> Boolean,
+    onUnlocked: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var input by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(false) }
+
+    val credentialLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            onUnlocked()
+        } else {
+            error = "未通过验证，请重试"
+        }
+    }
+
+    fun launchDeviceCredential(reset: Boolean = false) {
+        val intent = DiaryLock.deviceCredentialIntent(
+            context,
+            if (reset) "验证以解锁日记" else "解锁日记"
+        )
+        if (intent == null) {
+            error = "设备未设置锁屏，请先在系统设置中设置密码 / 指纹 / 面部"
+        } else {
+            credentialLauncher.launch(intent)
+        }
+    }
+
+    // 生物识别模式：进入自动弹出一次系统验证
+    LaunchedEffect(mode) {
+        if (mode == "biometric") launchDeviceCredential()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("🔒", style = MaterialTheme.typography.displaySmall)
+            Spacer(Modifier.height(6.dp))
+            Text("日记已锁定", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (mode == "biometric") "使用指纹 / 人脸 / 设备密码解锁" else "输入数字密码解锁",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.outline
+            )
+            Spacer(Modifier.height(20.dp))
+
+            if (mode == "password") {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    repeat(6) { i ->
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .background(
+                                    if (i < input.length) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surfaceVariant,
+                                    CircleShape
+                                )
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                error?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+                Spacer(Modifier.height(12.dp))
+                listOf(
+                    listOf("1", "2", "3"),
+                    listOf("4", "5", "6"),
+                    listOf("7", "8", "9"),
+                    listOf("⌫", "0", "✓")
+                ).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        row.forEach { key ->
+                            OutlinedButton(
+                                onClick = {
+                                    when (key) {
+                                        "⌫" -> {
+                                            if (input.isNotEmpty()) input = input.dropLast(1)
+                                            error = null
+                                        }
+                                        "✓" -> {
+                                            if (!checking && input.isNotEmpty()) {
+                                                checking = true
+                                                scope.launch {
+                                                    val ok = verifyPassword(input)
+                                                    checking = false
+                                                    if (ok) {
+                                                        onUnlocked()
+                                                    } else {
+                                                        error = "密码错误，请重试"
+                                                        input = ""
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        else -> if (input.length < 6) {
+                                            input += key
+                                            error = null
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.size(64.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                            ) { Text(key, style = MaterialTheme.typography.titleMedium) }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
+            } else {
+                Button(onClick = { launchDeviceCredential() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("验证指纹 / 人脸 / 设备密码")
+                }
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+
+            TextButton(onClick = { launchDeviceCredential(reset = true) }) {
+                Text("忘记密码？用设备锁验证解锁")
             }
         }
     }
