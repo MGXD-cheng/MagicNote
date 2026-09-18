@@ -80,6 +80,8 @@ import com.magicnote.mgxd.ui.components.ConfirmDialog
 import com.magicnote.mgxd.ui.components.DateTimePickerDialog
 import com.magicnote.mgxd.ui.components.EmptyState
 import com.magicnote.mgxd.ui.components.EVENT_COLORS
+import com.magicnote.mgxd.ui.components.EVENT_COLOR_ARGB
+import com.magicnote.mgxd.ui.components.safeEventColor
 import com.magicnote.mgxd.ui.viewmodel.CalendarViewModel
 import com.magicnote.mgxd.ui.viewmodel.CalendarViewModel.PlanState
 import com.magicnote.mgxd.util.TimeUtils
@@ -360,7 +362,7 @@ private fun MonthGrid(
                         isToday = date == LocalDate.now(),
                         hasEvents = events.any { isSameDay(it.startTime, date) },
                         hasCountdown = date in countdownDates,
-                        eventColors = events.filter { isSameDay(it.startTime, date) }.map { Color(it.color.toOpaqueArgb()) },
+                        eventColors = events.filter { isSameDay(it.startTime, date) }.map { Color(safeEventColor(it.color)) },
                         onClick = { onSelectDate(date) },
                         modifier = Modifier.weight(1f)
                     )
@@ -385,7 +387,7 @@ private fun MonthGrid(
                             isToday = date == LocalDate.now(),
                             hasEvents = events.any { isSameDay(it.startTime, date) },
                             hasCountdown = date in countdownDates,
-                            eventColors = events.filter { isSameDay(it.startTime, date) }.map { Color(it.color.toOpaqueArgb()) },
+                            eventColors = events.filter { isSameDay(it.startTime, date) }.map { Color(safeEventColor(it.color)) },
                             onClick = { onSelectDate(date) },
                             modifier = Modifier.weight(1f)
                         )
@@ -443,14 +445,10 @@ private fun DayCell(
                 dots.take(4).forEach { dotColor ->
                     Box(
                         modifier = Modifier
-                            .size(if (hasEvents) 5.dp else 0.dp)
-                            .background(
-                                dotColor.let { c ->
-                                    // 不透明化，杜绝历史数据透明不可见
-                                    Color(c.red, c.green, c.blue)
-                                },
-                                CircleShape
-                            )
+                            .size(if (hasEvents) 6.dp else 0.dp)
+                            .background(dotColor, CircleShape)
+                            // 深色模式下加浅描边，颜色点更清晰可辨
+                            .border(1.dp, MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                     )
                 }
                 if (!hasEvents) {
@@ -529,9 +527,11 @@ private fun EventCard(
         ) {
             Box(
                 modifier = Modifier
-                    .width(4.dp)
-                    .height(40.dp)
-                    .background(Color(event.color), RoundedCornerShape(2.dp))
+                    .width(6.dp)
+                    .height(44.dp)
+                    .background(Color(safeEventColor(event.color)), RoundedCornerShape(3.dp))
+                    // 深色模式下给色条加浅描边，避免深色背景上看不清
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
             )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -777,7 +777,7 @@ fun AddEventDialog(
     var startTime by remember(initialStart) { mutableStateOf(initialStart) }
     var endTime by remember(initialEnd) { mutableStateOf(initialEnd) }
     // 匹配调色板；不在调色板里的历史颜色保留为 customColor，避免一编辑就被强制回默认紫
-    val initialColorIdx = initialColor?.let { c -> EVENT_COLORS.indexOfFirst { it.value.toInt() == c } } ?: -1
+    val initialColorIdx = initialColor?.let { c -> EVENT_COLOR_ARGB.indexOf(c) } ?: -1
     var colorIndex by remember(initialColor) { mutableStateOf(initialColorIdx) }
     var customColor by remember(initialColor) { mutableStateOf(initialColor?.takeIf { initialColorIdx < 0 }) }
     var showStartPicker by remember { mutableStateOf(false) }
@@ -837,8 +837,10 @@ fun AddEventDialog(
                         onConfirm(
                             title.trim(), start, end, description.trim().ifBlank { null },
                             // 选中调色板色；否则沿用原自定义色（并强制不透明，避免历史数据 alpha 丢失变不可见）
-                            (if (colorIndex >= 0) EVENT_COLORS[colorIndex].value.toInt()
-                            else customColor ?: EVENT_COLORS[0].value.toInt()).toOpaqueArgb(),
+                            safeEventColor(
+                                if (colorIndex >= 0) EVENT_COLOR_ARGB[colorIndex]
+                                else customColor ?: EVENT_COLOR_ARGB[0]
+                            ),
                             remindMinutes
                         )
                     }
@@ -1035,6 +1037,4 @@ private fun FocusModeScreen(
     }
 }
 
-/** 强制 ARGB 不透明：历史数据若丢了 alpha 位会整色透明不可见，渲染前统一补上 */
-private fun Int.toOpaqueArgb(): Int =
-    if (this ushr 24 == 0) (this and 0x00FFFFFF) or (0xFF shl 24) else this
+// toOpaqueArgb 已由 ui/components 的 safeEventColor 取代（Int 比较更可靠）
