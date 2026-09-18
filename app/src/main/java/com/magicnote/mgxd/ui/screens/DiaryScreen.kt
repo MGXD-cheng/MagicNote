@@ -1,5 +1,11 @@
 package com.magicnote.mgxd.ui.screens
 
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -159,6 +165,9 @@ private fun DiaryEntryRow(
     onDelete: () -> Unit
 ) {
     val mood = MOODS.getOrElse(diary.mood) { "🙂" }
+    // 图片查看器状态（点击缩略图打开大图）
+    var viewerImages by remember { mutableStateOf<List<String>?>(null) }
+    var viewerIndex by remember { mutableIntStateOf(0) }
     // 旧数据 createdAt 可能为 0（迁移），回退到 updatedAt
     val timeMillis = if (diary.createdAt > 0L) diary.createdAt else diary.updatedAt
     val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
@@ -193,7 +202,7 @@ private fun DiaryEntryRow(
             if (diary.imagePaths.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    diary.imagePaths.take(4).forEach { path ->
+                    diary.imagePaths.take(4).forEachIndexed { idx, path ->
                         val bmp = remember(path) {
                             runCatching {
                                 val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
@@ -206,7 +215,11 @@ private fun DiaryEntryRow(
                                 contentDescription = "日记图片",
                                 modifier = Modifier
                                     .size(44.dp)
-                                    .clip(RoundedCornerShape(6.dp)),
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        viewerImages = diary.imagePaths
+                                        viewerIndex = idx
+                                    },
                                 contentScale = ContentScale.Crop
                             )
                         }
@@ -216,6 +229,49 @@ private fun DiaryEntryRow(
         }
         IconButton(onClick = onDelete) {
             Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.outline)
+        }
+    }
+
+    // 全屏图片查看器（点击缩略图打开，支持左右切换 / 页码）
+    viewerImages?.let { images ->
+        Dialog(onDismissRequest = { viewerImages = null }) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                val currentPath = images.getOrNull(viewerIndex)
+                val fullBitmap = remember(currentPath) {
+                    runCatching { android.graphics.BitmapFactory.decodeFile(currentPath) }.getOrNull()
+                }
+                if (fullBitmap != null) {
+                    Image(
+                        bitmap = fullBitmap.asImageBitmap(),
+                        contentDescription = "查看图片",
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                if (images.size > 1) {
+                    IconButton(
+                        onClick = { viewerIndex = (viewerIndex - 1 + images.size) % images.size },
+                        modifier = Modifier.align(androidx.compose.ui.Alignment.CenterStart)
+                    ) { Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "上一张", tint = Color.White) }
+                    IconButton(
+                        onClick = { viewerIndex = (viewerIndex + 1) % images.size },
+                        modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd)
+                    ) { Icon(Icons.Default.KeyboardArrowRight, contentDescription = "下一张", tint = Color.White) }
+                }
+                Text(
+                    "${viewerIndex + 1} / ${images.size}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(28.dp)
+                )
+                IconButton(
+                    onClick = { viewerImages = null },
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(12.dp)
+                ) { Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color.White) }
+            }
         }
     }
 }
