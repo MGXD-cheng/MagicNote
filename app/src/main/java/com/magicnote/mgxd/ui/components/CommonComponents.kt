@@ -210,6 +210,29 @@ val EVENT_COLORS = listOf(
     Color(0xFFEF5350),
     Color(0xFFEC407A)
 )
+/**
+ * 日程调色板 ARGB（Int 形式）
+ *
+ * 存储/比较必须用这里的 Int：Compose 的 [Color.value] 是 64 位打包值，
+ * 直接 `.value.toInt()` 在不同 Compose 版本下可能得到 0（→ 显示为纯黑），
+ * 这是「无论选什么颜色都变黑」的根因。
+ */
+val EVENT_COLOR_ARGB = listOf(
+    0xFF7C4DFF.toInt(),
+    0xFF42A5F5.toInt(),
+    0xFF66BB6A.toInt(),
+    0xFFFFB74D.toInt(),
+    0xFFEF5350.toInt(),
+    0xFFEC407A.toInt()
+)
+
+/**
+ * 事件颜色的安全化：
+ * - 异常/历史脏数据（0 或 alpha==0）→ 回退默认紫，不再渲染成黑色/透明；
+ * - 其余强制 alpha=0xFF，避免历史数据 alpha 丢失导致不可见。
+ */
+fun safeEventColor(argb: Int): Int =
+    if (argb == 0 || (argb ushr 24) == 0) EVENT_COLOR_ARGB[0] else (argb or 0xFF000000.toInt())
 
 @Composable
 fun ColorSelector(selected: Int, onSelect: (Int) -> Unit) {
