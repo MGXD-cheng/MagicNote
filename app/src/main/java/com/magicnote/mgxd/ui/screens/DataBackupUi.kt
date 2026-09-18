@@ -1,6 +1,9 @@
 package com.magicnote.mgxd.ui.screens
 
 import android.net.Uri
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
@@ -27,6 +31,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.magicnote.mgxd.ui.viewmodel.ConflictPolicy
 import com.magicnote.mgxd.ui.viewmodel.DataTransferViewModel
+import com.magicnote.mgxd.ui.viewmodel.SettingsViewModel
 import com.magicnote.mgxd.util.MgxdCodec
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -51,7 +57,7 @@ import java.util.Locale
 
 /** 数据管理：.mgxd 导入导出 + CSV 出口 */
 @Composable
-fun DataBackupCard(dataVm: DataTransferViewModel) {
+fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val transferState by dataVm.state.collectAsStateWithLifecycle()
@@ -161,6 +167,140 @@ fun DataBackupCard(dataVm: DataTransferViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.outline
         )
+
+        // ===== 局域网同步（同一 Wi-Fi 下两台设备互传 / 预览） =====
+        HorizontalDivider()
+        Text("局域网同步（两台设备互传）", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "两台设备连同一 Wi-Fi：A 开启服务后，B 用浏览器打开即可预览数据并下载 .mgxd 备份；也可在下方填入 A 的地址，一键合并数据（图片一起同步）",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+        val lanUrl by vm.lanUrl.collectAsStateWithLifecycle()
+        val lanDownloading by vm.lanDownloading.collectAsStateWithLifecycle()
+        val lanError by vm.lanError.collectAsStateWithLifecycle()
+        val lanImportText by vm.lanImportText.collectAsStateWithLifecycle()
+        LaunchedEffect(lanError) {
+            lanError?.let {
+                Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                vm.clearLanError()
+            }
+        }
+        if (lanUrl == null) {
+            OutlinedButton(
+                onClick = {
+                    vm.startLanSync(
+                        exportProvider = { dataVm.buildMgxdText() },
+                        summaryProvider = { dataVm.summaryText() }
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("开启局域网同步（本机作为数据源）") }
+        } else {
+            Text(
+                "已开启：" + lanUrl,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                "在电脑 / 另一台手机浏览器打开上面的地址：可预览数据概览，并可下载 .mgxd 备份文件",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        cm?.setPrimaryClip(ClipData.newPlainText("Magic Note 局域网地址", lanUrl))
+                        Toast.makeText(context, "地址已复制", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("复制地址") }
+                OutlinedButton(
+                    onClick = { vm.stopLanSync() },
+                    modifier = Modifier.weight(1f)
+                ) { Text("关闭") }
+            }
+        }
+        Text("从另一台设备导入", style = MaterialTheme.typography.titleSmall)
+        var lanAddr by remember { mutableStateOf("http://192.168.1.100:8898") }
+        OutlinedTextField(
+            value = lanAddr,
+            onValueChange = { lanAddr = it },
+            label = { Text("另一台设备的地址") },
+            placeholder = { Text("http://192.168.1.100:8898") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedButton(
+            onClick = { vm.downloadFromLan(lanAddr) },
+            enabled = !lanDownloading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (lanDownloading) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("下载中…")
+            } else {
+                Text("下载并导入")
+            }
+        }
+        var showLanConflict by remember { mutableStateOf(false) }
+        LaunchedEffect(lanImportText) {
+            val text = lanImportText ?: return@LaunchedEffect
+            val ok = dataVm.prepareImport(text)
+            vm.consumeLanImport()
+            if (!ok) {
+                Toast.makeText(context, "对方返回的不是有效的 .mgxd 备份", Toast.LENGTH_LONG).show()
+            } else {
+                val conflicts = dataVm.countConflicts()
+                if (conflicts == 0) {
+                    dataVm.runImport(context, ConflictPolicy.KEEP_BOTH) { r ->
+                        Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    showLanConflict = true
+                }
+            }
+        }
+        if (showLanConflict) {
+            AlertDialog(
+                onDismissRequest = { showLanConflict = false },
+                title = { Text("发现重复的数据") },
+                text = {
+                    Text(
+                        "检测到与本地重复的条目，选择处理方式：\n" +
+                            "· 保留两份：重复项都保留（推荐）\n" +
+                            "· 覆盖：用对方数据覆盖本地\n" +
+                            "· 跳过：忽略重复项，只合并新数据"
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showLanConflict = false
+                        dataVm.runImport(context, ConflictPolicy.KEEP_BOTH) { r ->
+                            Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
+                        }
+                    }) { Text("保留两份") }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = {
+                            showLanConflict = false
+                            dataVm.runImport(context, ConflictPolicy.OVERWRITE) { r ->
+                                Toast.makeText(context, "同步完成：覆盖 " + r.overwritten + " 项", Toast.LENGTH_LONG).show()
+                            }
+                        }) { Text("覆盖") }
+                        TextButton(onClick = {
+                            showLanConflict = false
+                            dataVm.runImport(context, ConflictPolicy.SKIP) { r ->
+                                Toast.makeText(context, "同步完成：跳过 " + r.skipped + " 项", Toast.LENGTH_LONG).show()
+                            }
+                        }) { Text("跳过") }
+                    }
+                }
+            )
+        }
         }
     }
 
