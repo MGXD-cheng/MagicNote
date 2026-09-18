@@ -77,10 +77,15 @@ class LanSyncServer(
             }
             val ctype: String
             val body: String
+            var disposition: String? = null
             when {
                 path.startsWith("/export") -> {
                     ctype = "application/json; charset=utf-8"
                     body = runBlocking { exportProvider() }
+                    // 关键：带 .mgxd 后缀下载文件名，浏览器才会存成 MagicNote-YYYYMMDD.mgxd
+                    val stamp = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
+                        .format(java.util.Date())
+                    disposition = "attachment; filename=\"MagicNote-" + stamp + ".mgxd\""
                 }
                 path.startsWith("/summary") -> {
                     ctype = "application/json; charset=utf-8"
@@ -95,6 +100,7 @@ class LanSyncServer(
             val header = buildString {
                 append("HTTP/1.1 200 OK\r\n")
                 append("Content-Type: $ctype\r\n")
+                disposition?.let { append("Content-Disposition: $it\r\n") }
                 append("Content-Length: ${bytes.size}\r\n")
                 append("Connection: close\r\n")
                 append("\r\n")
@@ -136,7 +142,7 @@ class LanSyncServer(
               </div>
               <div class="card">
                 <h2>同步</h2>
-                <a class="btn" href="/export.mgxd">⬇ 下载完整备份 (.mgxd)</a>
+                <a class="btn" href="/export.mgxd" download>⬇ 下载完整备份 (.mgxd)</a>
                 <div class="tip">在另一台设备的 Magic Note 中打开「设置 → 局域网同步 → 从另一台导入」，填入本机地址即可合并数据（图片一并同步）。</div>
               </div>
             </body>
