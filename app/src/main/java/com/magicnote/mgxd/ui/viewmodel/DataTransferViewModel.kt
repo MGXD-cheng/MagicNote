@@ -313,6 +313,58 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
 
     /** 单条实体写库；图片占位符 → 落盘本地 + 路径还原 */
     /** 消费导出就绪事件（防止重复弹窗）；pendingExport 保留给系统保存框回调读取，写盘后由 UI 清空 */
+    /**
+     * 组装全量 .mgxd 文本（局域网同步 / 预览导出用；图片保留透明通道）
+     * 失败返回空串。
+     */
+    suspend fun buildMgxdText(): String = withContext(Dispatchers.IO) {
+        try {
+            val dataObjs = ArrayList<JsonObject>()
+            val imageObjs = ArrayList<JsonObject>()
+            repo.observeTodos().first().forEach { dataObjs.add(MgxdCodec.todoToExport(it)) }
+            repo.observeAllEvents().first().forEach { dataObjs.add(MgxdCodec.eventToExport(it)) }
+            repo.observeDiaries().first().forEach { d ->
+                var imgIdx = 0
+                MgxdCodec.diaryImageRefs(d).forEach { (refId, path) ->
+                    val dataUrl = MgxdCodec.encodeImage(path, true)
+                    if (dataUrl != null) {
+                        imgIdx++
+                        val mime = dataUrl.substringBefore(";base64").removePrefix("data:")
+                        imageObjs.add(buildJsonObject {
+                            put("refId", refId)
+                            put("name", "img_${d.id}_$imgIdx.${if (mime == "image/png") "png" else "jpg"}")
+                            put("data", dataUrl)
+                            put("format", if (mime == "image/png") "png" else "jpeg")
+                        })
+                    }
+                }
+                dataObjs.add(MgxdCodec.diaryToExport(d))
+            }
+            repo.observeHabits().first().forEach { dataObjs.add(MgxdCodec.habitToExport(it)) }
+            repo.observeCountdowns().first().forEach { dataObjs.add(MgxdCodec.countdownToExport(it)) }
+            MgxdCodec.buildFile(dataObjs, imageObjs)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    /** 数据概览文本（局域网预览页用） */
+    suspend fun summaryText(): String = withContext(Dispatchers.IO) {
+        runCatching {
+            val todos = repo.observeTodos().first()
+            val events = repo.observeAllEvents().first()
+            val diaries = repo.observeDiaries().first()
+            val habits = repo.observeHabits().first()
+            val countdowns = repo.observeCountdowns().first()
+            "待办：" + todos.size + " 条（未完成 " + todos.count { !it.completed } + "）\n" +
+                "日程：" + events.size + " 条\n" +
+                "日记：" + diaries.size + " 篇\n" +
+                "打卡：" + habits.size + " 个\n" +
+                "倒数日：" + countdowns.size + " 个\n" +
+                "---\n由 Magic Note 局域网同步提供，可下载 .mgxd 备份后在另一台设备导入合并"
+        }.getOrDefault("暂无数据")
+    }
+
     fun clearExport() {
         _exportReady.value = null
     }
