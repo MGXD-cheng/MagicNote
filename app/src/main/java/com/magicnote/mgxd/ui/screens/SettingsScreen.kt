@@ -476,7 +476,7 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
             }
 
             // ===== 数据备份与迁移 =====
-            DataBackupCard(dataVm)
+            DataBackupCard(dataVm, vm)
 
             // ===== 纯净模式 =====
             SectionCard(title = "纯净模式", icon = Icons.Default.PowerSettingsNew) {
@@ -587,141 +587,6 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                         },
                         dismissButton = {
                             TextButton(onClick = { vm.dismissUpdate() }, enabled = !updateDownloading) { Text("以后再说") }
-                        }
-                    )
-                }
-            }
-
-            // ===== 局域网同步 =====
-            SectionCard(title = "局域网同步", icon = Icons.Default.Share) {
-                Text(
-                    "两台设备连同一 Wi-Fi：A 开启服务后，B 用浏览器即可预览数据；也可在下方填入 A 的地址，一键把数据合并过来（图片一起同步）",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.outline
-                )
-                val lanUrl by vm.lanUrl.collectAsStateWithLifecycle()
-                val lanDownloading by vm.lanDownloading.collectAsStateWithLifecycle()
-                val lanError by vm.lanError.collectAsStateWithLifecycle()
-                val lanImportText by vm.lanImportText.collectAsStateWithLifecycle()
-                LaunchedEffect(lanError) {
-                    lanError?.let {
-                        Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-                        vm.clearLanError()
-                    }
-                }
-                if (lanUrl == null) {
-                    OutlinedButton(
-                        onClick = {
-                            vm.startLanSync(
-                                exportProvider = { dataVm.buildMgxdText() },
-                                summaryProvider = { dataVm.summaryText() }
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("开启局域网同步（本机作为数据源）") }
-                } else {
-                    Text(
-                        "已开启：" + lanUrl,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        "在电脑 / 另一台手机浏览器打开上面的地址即可预览，并可下载 .mgxd 备份",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = {
-                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                cm?.setPrimaryClip(ClipData.newPlainText("Magic Note 局域网地址", lanUrl))
-                                Toast.makeText(context, "地址已复制", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("复制地址") }
-                        OutlinedButton(
-                            onClick = { vm.stopLanSync() },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("关闭") }
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text("从另一台设备导入", style = MaterialTheme.typography.titleMedium)
-                var lanAddr by remember { mutableStateOf("http://192.168.1.100:8898") }
-                OutlinedTextField(
-                    value = lanAddr,
-                    onValueChange = { lanAddr = it },
-                    label = { Text("另一台设备的地址") },
-                    placeholder = { Text("http://192.168.1.100:8898") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedButton(
-                    onClick = { vm.downloadFromLan(lanAddr) },
-                    enabled = !lanDownloading,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (lanDownloading) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text("下载中…")
-                    } else {
-                        Text("下载并导入")
-                    }
-                }
-                var showLanConflict by remember { mutableStateOf(false) }
-                LaunchedEffect(lanImportText) {
-                    val text = lanImportText ?: return@LaunchedEffect
-                    val ok = dataVm.prepareImport(text)
-                    vm.consumeLanImport()
-                    if (!ok) {
-                        Toast.makeText(context, "对方返回的不是有效的 .mgxd 备份", Toast.LENGTH_LONG).show()
-                    } else {
-                        val conflicts = dataVm.countConflicts()
-                        if (conflicts == 0) {
-                            dataVm.runImport(context, ConflictPolicy.KEEP_BOTH) { r ->
-                                Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
-                            }
-                        } else {
-                            showLanConflict = true
-                        }
-                    }
-                }
-                if (showLanConflict) {
-                    AlertDialog(
-                        onDismissRequest = { showLanConflict = false },
-                        title = { Text("发现重复的数据") },
-                        text = {
-                            Text(
-                                "检测到与本地重复的条目，选择处理方式：\n" +
-                                    "· 保留两份：重复项都保留（推荐）\n" +
-                                    "· 覆盖：用对方数据覆盖本地\n" +
-                                    "· 跳过：忽略重复项，只合并新数据"
-                            )
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                showLanConflict = false
-                                dataVm.runImport(context, ConflictPolicy.KEEP_BOTH) { r ->
-                                    Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
-                                }
-                            }) { Text("保留两份") }
-                        },
-                        dismissButton = {
-                            Row {
-                                TextButton(onClick = {
-                                    showLanConflict = false
-                                    dataVm.runImport(context, ConflictPolicy.OVERWRITE) { r ->
-                                        Toast.makeText(context, "同步完成：覆盖 " + r.overwritten + " 项", Toast.LENGTH_LONG).show()
-                                    }
-                                }) { Text("覆盖") }
-                                TextButton(onClick = {
-                                    showLanConflict = false
-                                    dataVm.runImport(context, ConflictPolicy.SKIP) { r ->
-                                        Toast.makeText(context, "同步完成：跳过 " + r.skipped + " 项", Toast.LENGTH_LONG).show()
-                                    }
-                                }) { Text("跳过") }
-                            }
                         }
                     )
                 }
@@ -883,7 +748,7 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                     .align(Alignment.CenterHorizontally)
             )
             Text(
-                "design by MGXD(and DeepSeek)",
+                "Designed by MGXD(and DeepSeek)",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier
