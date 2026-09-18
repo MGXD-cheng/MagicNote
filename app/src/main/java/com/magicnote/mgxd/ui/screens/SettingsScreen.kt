@@ -1,5 +1,9 @@
 package com.magicnote.mgxd.ui.screens
 
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.runtime.rememberCoroutineScope
+import com.magicnote.mgxd.util.DiaryLock
+import kotlinx.coroutines.launch
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -477,6 +481,156 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
 
             // ===== 数据备份与迁移 =====
             DataBackupCard(dataVm, vm)
+
+            // ===== 日记锁 =====
+            SectionCard(title = "日记锁", icon = Icons.Default.Lock) {
+                val lockEnabled by vm.diaryLockEnabled.collectAsStateWithLifecycle()
+                val lockMode by vm.diaryLockMode.collectAsStateWithLifecycle()
+                val hasPassword by vm.diaryLockHasPassword.collectAsStateWithLifecycle()
+                val lockScope = rememberCoroutineScope()
+                var showPwdDialog by remember { mutableStateOf(false) }
+                var oldPwd by remember { mutableStateOf("") }
+                var newPwd by remember { mutableStateOf("") }
+                var confirmPwd by remember { mutableStateOf("") }
+                var pwdError by remember { mutableStateOf<String?>(null) }
+
+                Text(
+                    "开启后，进入日记页需要验证（数字密码或指纹 / 人脸 / 设备锁），保护私密记录",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("启用日记锁", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (lockEnabled) "已开启" else "未开启",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                    Switch(
+                        checked = lockEnabled,
+                        onCheckedChange = { on ->
+                            if (on && !hasPassword) {
+                                // 首次开启：先设置数字密码
+                                oldPwd = ""; newPwd = ""; confirmPwd = ""; pwdError = null
+                                showPwdDialog = true
+                            } else {
+                                vm.setDiaryLockEnabled(on)
+                            }
+                        }
+                    )
+                }
+                Text("解锁方式", style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = lockMode == "password",
+                        onClick = {
+                            vm.setDiaryLockMode("password")
+                            if (!hasPassword) {
+                                oldPwd = ""; newPwd = ""; confirmPwd = ""; pwdError = null
+                                showPwdDialog = true
+                            }
+                        }
+                    )
+                    Text("数字密码")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = lockMode == "biometric",
+                        onClick = {
+                            if (!DiaryLock.isDeviceSecure(context)) {
+                                Toast.makeText(
+                                    context,
+                                    "请先在系统设置里设置锁屏（密码 / PIN / 图案），才能使用指纹或人脸",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                vm.setDiaryLockMode("biometric")
+                            }
+                        }
+                    )
+                    Text("指纹 / 人脸 / 设备锁")
+                }
+                OutlinedButton(
+                    onClick = {
+                        oldPwd = ""; newPwd = ""; confirmPwd = ""; pwdError = null
+                        showPwdDialog = true
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (hasPassword) "修改数字密码" else "设置数字密码") }
+                Text(
+                    "密码仅保存在本机（随机盐 + SHA-256，不存明文）；忘记密码可在日记锁屏用设备锁验证解锁",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
+
+                if (showPwdDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showPwdDialog = false },
+                        title = { Text(if (hasPassword) "修改数字密码" else "设置数字密码") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (hasPassword) {
+                                    OutlinedTextField(
+                                        value = oldPwd,
+                                        onValueChange = { v -> oldPwd = v.filter { it.isDigit() }.take(6) },
+                                        label = { Text("当前密码") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                OutlinedTextField(
+                                    value = newPwd,
+                                    onValueChange = { v -> newPwd = v.filter { it.isDigit() }.take(6) },
+                                    label = { Text("新密码（4-6 位数字）") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = confirmPwd,
+                                    onValueChange = { v -> confirmPwd = v.filter { it.isDigit() }.take(6) },
+                                    label = { Text("确认新密码") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                pwdError?.let {
+                                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                when {
+                                    !DiaryLock.isValidPassword(newPwd) -> pwdError = "密码需为 4-6 位数字"
+                                    newPwd != confirmPwd -> pwdError = "两次输入不一致"
+                                    hasPassword -> lockScope.launch {
+                                        if (vm.verifyDiaryPassword(oldPwd)) {
+                                            vm.saveDiaryPassword(newPwd)
+                                            showPwdDialog = false
+                                            Toast.makeText(context, "密码已更新", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            pwdError = "当前密码不正确"
+                                        }
+                                    }
+                                    else -> {
+                                        vm.saveDiaryPassword(newPwd)
+                                        showPwdDialog = false
+                                        Toast.makeText(context, "日记锁已开启", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }) { Text("保存") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showPwdDialog = false }) { Text("取消") }
+                        }
+                    )
+                }
+            }
 
             // ===== 纯净模式 =====
             SectionCard(title = "纯净模式", icon = Icons.Default.PowerSettingsNew) {
