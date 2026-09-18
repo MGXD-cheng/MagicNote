@@ -249,19 +249,22 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
         LaunchedEffect(lanImportText) {
             val text = lanImportText ?: return@LaunchedEffect
             val ok = dataVm.prepareImport(text)
-            vm.consumeLanImport()
             if (!ok) {
                 Toast.makeText(context, "对方返回的不是有效的 .mgxd 备份", Toast.LENGTH_LONG).show()
-            } else {
-                val conflicts = dataVm.countConflicts()
-                if (conflicts == 0) {
-                    dataVm.runImport(context, ConflictPolicy.KEEP_BOTH) { r ->
-                        Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
-                    }
-                } else {
-                    showLanConflict = true
-                }
+                vm.consumeLanImport()
+                return@LaunchedEffect
             }
+            val conflicts = dataVm.countConflicts()
+            if (conflicts == 0) {
+                dataVm.runImport(context, ConflictPolicy.KEEP_BOTH) { r ->
+                    Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
+                }
+            } else {
+                showLanConflict = true
+            }
+            // 关键：放到所有挂起调用（countConflicts）之后清空，
+            // 避免 key 变化触发 LaunchedEffect 重启、取消协程导致导入被中断
+            vm.consumeLanImport()
         }
         if (showLanConflict) {
             AlertDialog(
