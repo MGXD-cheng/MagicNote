@@ -9,6 +9,7 @@ import java.net.HttpURLConnection
 import com.magicnote.mgxd.update.UpdateInfo
 import com.magicnote.mgxd.update.UpdateChecker
 import com.magicnote.mgxd.lan.LanSyncServer
+import com.magicnote.mgxd.util.DiaryLock
 import com.magicnote.mgxd.data.prefs.UserPrefs
 import com.magicnote.mgxd.data.repo.AppRepository
 import com.magicnote.mgxd.notify.ReminderScheduler
@@ -19,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -60,6 +62,14 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
     private val _themeMode = MutableStateFlow("system")
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
+    // ---------- 日记锁 ----------
+    private val _diaryLockEnabled = MutableStateFlow(false)
+    val diaryLockEnabled: StateFlow<Boolean> = _diaryLockEnabled.asStateFlow()
+    private val _diaryLockMode = MutableStateFlow("password")
+    val diaryLockMode: StateFlow<String> = _diaryLockMode.asStateFlow()
+    private val _diaryLockHasPassword = MutableStateFlow(false)
+    val diaryLockHasPassword: StateFlow<Boolean> = _diaryLockHasPassword.asStateFlow()
+
     // ---------- 检查更新 ----------
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
     val updateInfo: StateFlow<UpdateInfo?> = _updateInfo.asStateFlow()
@@ -95,6 +105,11 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
 
     init {
         viewModelScope.launch { repo.aiConfig.collect { _aiConfig.value = it } }
+        viewModelScope.launch { repo.diaryLockEnabled.collect { _diaryLockEnabled.value = it } }
+        viewModelScope.launch { repo.diaryLockMode.collect { _diaryLockMode.value = it } }
+        viewModelScope.launch {
+            repo.diaryLockHash.collect { _diaryLockHasPassword.value = !it.isNullOrBlank() }
+        }
         viewModelScope.launch { repo.notifyConfig.collect { _notifyConfig.value = it } }
         viewModelScope.launch { repo.screenTimeConfig.collect { _screenTimeConfig.value = it } }
         viewModelScope.launch { repo.categoryOverrides.collect { _categoryOverrides.value = it } }
@@ -336,6 +351,30 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
 
     fun consumeLanImport() { _lanImportText.value = null }
     fun clearLanError() { _lanError.value = null }
+
+    // ==================== 日记锁 ====================
+    fun setDiaryLockEnabled(enabled: Boolean) {
+        viewModelScope.launch { repo.saveDiaryLock(enabled, _diaryLockMode.value) }
+    }
+
+    fun setDiaryLockMode(mode: String) {
+        viewModelScope.launch { repo.saveDiaryLock(_diaryLockEnabled.value, mode) }
+    }
+
+    /** 设置 / 修改数字密码（自动生成新盐；同时开启日记锁） */
+    fun saveDiaryPassword(newPassword: String) {
+        viewModelScope.launch {
+            val salt = DiaryLock.newSalt()
+            repo.saveDiaryLock(true, _diaryLockMode.value, DiaryLock.hash(newPassword, salt), salt)
+        }
+    }
+
+    /** 校验当前密码（修改密码 / 关闭锁时使用） */
+    suspend fun verifyDiaryPassword(input: String): Boolean {
+        val salt = repo.diaryLockSalt.first() ?: return false
+        val hash = repo.diaryLockHash.first() ?: return false
+        return DiaryLock.hash(input, salt) == hash
+    }
 
     override fun onCleared() {
         lanServer?.stop()
