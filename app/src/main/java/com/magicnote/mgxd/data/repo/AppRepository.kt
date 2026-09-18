@@ -81,6 +81,11 @@ suspend fun clearChats() = db.chatDao().clearAll()
     val screenTimeConfig get() = prefs.screenTimeConfig
     val categoryOverrides get() = prefs.categoryOverrides
     val pureMode get() = prefs.pureMode
+    // ---- 日记锁 ----
+    val diaryLockEnabled get() = prefs.diaryLockEnabled
+    val diaryLockMode get() = prefs.diaryLockMode
+    val diaryLockHash get() = prefs.diaryLockHash
+    val diaryLockSalt get() = prefs.diaryLockSalt
     val moduleConfig get() = prefs.moduleConfig
     val themeMode get() = prefs.themeMode
     suspend fun saveAiConfig(
@@ -97,6 +102,8 @@ suspend fun clearChats() = db.chatDao().clearAll()
         prefs.saveScreenTimeConfig(enabled, thresholdMinutes)
 
     suspend fun savePureMode(enabled: Boolean) = prefs.savePureMode(enabled)
+    suspend fun saveDiaryLock(enabled: Boolean, mode: String, hash: String? = null, salt: String? = null) =
+        prefs.saveDiaryLock(enabled, mode, hash, salt)
     suspend fun saveThemeMode(mode: String) = prefs.saveThemeMode(mode)
 
     suspend fun saveModuleConfig(todoEnabled: Boolean, calendarEnabled: Boolean, diaryEnabled: Boolean) =
