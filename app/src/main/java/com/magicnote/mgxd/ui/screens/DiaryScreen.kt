@@ -109,7 +109,7 @@ fun DiaryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 104.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (grouped.isEmpty()) {
