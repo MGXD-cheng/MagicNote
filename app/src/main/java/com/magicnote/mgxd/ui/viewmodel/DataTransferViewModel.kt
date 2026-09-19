@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -212,8 +213,8 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
         repo.observeTodos().first().forEach { s.add("todo:" + todoKey(it)) }
         repo.observeAllEvents().first().forEach { s.add("event:" + eventKey(it)) }
         repo.observeDiaries().first().forEach { s.add("diary:" + diaryKey(it)) }
-        repo.observeHabits().first().forEach { s.add("habit:" + it.title) }
-        repo.observeCountdowns().first().forEach { s.add("countdown:${it.title}|${it.targetDate}") }
+        repo.observeHabits().first().forEach { s.add("habit:" + s0(it.title)) }
+        repo.observeCountdowns().first().forEach { s.add("countdown:" + s0(it.title) + "|" + s0(it.targetDate)) }
         return s
     }
 
@@ -226,18 +227,34 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
         else -> emptySet()
     }
 
-    private fun todoKey(t: TodoEntity) = "${t.title}|${t.dueTime}|${t.isLongTerm}"
-    private fun eventKey(e: CalendarEventEntity) = "${e.title}|${e.startTime}"
-    private fun diaryKey(d: DiaryEntity) = "${d.date}|${d.content}"
+    private fun todoKey(t: TodoEntity) = s0(t.title) + "|" + s0(t.dueTime) + "|" + s0(t.isLongTerm)
+    private fun eventKey(e: CalendarEventEntity) = s0(e.title) + "|" + s0(e.startTime)
+    private fun diaryKey(d: DiaryEntity) = s0(d.date) + "|" + s0(d.content)
 
+    private fun s0(v: Any?): String = if (v == null) "" else v.toString()
+
+    /** 取 JSON 字段原始文本（字符串不带引号；数字、布尔原样；null / 缺失 → 空串） */
+    private fun jsonField(o: JsonObject, key: String): String {
+        val e = o[key] ?: return ""
+        if (e is JsonNull) return ""
+        return (e as? JsonPrimitive)?.content ?: ""
+    }
+
+    /**
+     * 冲突判定用的自然键。
+     *
+     * ⚠️ 关键修复：不能用 JsonElement.toString()——JsonPrimitive.toString() 对字符串会带引号
+     * （"买菜" ≠ 买菜），导致与本地实体拼出的键永不一致、countConflicts 恒为 0、
+     * 导入时同一批数据被反复插入（「总是有重复数据」的根因）。
+     */
     private fun keyOf(o: JsonObject): String {
-        val type = (o["type"] as? JsonPrimitive)?.content ?: ""
+        val type = jsonField(o, "type")
         return when (type) {
-            "todo" -> "todo:" + listOf(o["title"], o["dueTime"], o["isLongTerm"]).joinToString("|") { it?.toString() ?: "" }
-            "event" -> "event:" + listOf(o["title"], o["startTime"]).joinToString("|") { it?.toString() ?: "" }
-            "diary" -> "diary:" + listOf(o["date"], o["content"]).joinToString("|") { it?.toString() ?: "" }
-            "habit" -> "habit:" + (o["title"]?.toString() ?: "")
-            "countdown" -> "countdown:" + listOf(o["title"], o["targetDate"]).joinToString("|") { it?.toString() ?: "" }
+            "todo" -> "todo:" + jsonField(o, "title") + "|" + jsonField(o, "dueTime") + "|" + jsonField(o, "isLongTerm")
+            "event" -> "event:" + jsonField(o, "title") + "|" + jsonField(o, "startTime")
+            "diary" -> "diary:" + jsonField(o, "date") + "|" + jsonField(o, "content")
+            "habit" -> "habit:" + jsonField(o, "title")
+            "countdown" -> "countdown:" + jsonField(o, "title") + "|" + jsonField(o, "targetDate")
             else -> type
         }
     }
