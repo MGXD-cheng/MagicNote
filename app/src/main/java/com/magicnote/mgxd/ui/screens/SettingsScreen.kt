@@ -1,5 +1,9 @@
 package com.magicnote.mgxd.ui.screens
 
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Visibility
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.icons.filled.Lock
@@ -88,6 +92,7 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
 
     var baseUrl by remember { mutableStateOf(aiConfig.baseUrl) }
     var apiKey by remember { mutableStateOf(aiConfig.apiKey) }
+    var apiKeyVisible by remember { mutableStateOf(false) }
     var model by remember { mutableStateOf(aiConfig.model) }
     var personalityId by remember { mutableStateOf(aiConfig.personalityId) }
     var customPrompt by remember { mutableStateOf(aiConfig.customPrompt) }
@@ -185,6 +190,18 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                     label = { Text("API Key") },
                     placeholder = { Text("sk-...") },
                     singleLine = true,
+                    // 隐私保护：默认用圆点打码（截图 / 借手机时不会泄露），点右侧小眼睛才显示明文
+                    visualTransformation = if (apiKeyVisible) VisualTransformation.None
+                        else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) {
+                            Icon(
+                                imageVector = if (apiKeyVisible) Icons.Default.VisibilityOff
+                                    else Icons.Default.Visibility,
+                                contentDescription = if (apiKeyVisible) "隐藏 API Key" else "显示 API Key"
+                            )
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
