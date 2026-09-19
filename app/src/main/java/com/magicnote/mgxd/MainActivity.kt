@@ -1,5 +1,8 @@
 package com.magicnote.mgxd
 
+import com.magicnote.mgxd.util.MgxdIntentHolder
+import android.widget.Toast
+import android.content.Intent
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -40,6 +43,12 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
         // 恢复闹钟调度 + 按纯净模式决定是否启动后台守护（见 scheduleReminders）
         scheduleReminders()
+        // 从文件管理器 / 浏览器打开 .mgxd 备份文件时直接进入导入流程
+        handleViewIntent(intent)
+        // 打开 App 时刷新桌面小组件（数据可能在别处发生变化）
+        com.magicnote.mgxd.widget.TodoWidgetProvider.refreshAll(this)
+        com.magicnote.mgxd.widget.CountdownWidgetProvider.refreshAll(this)
+        com.magicnote.mgxd.widget.QuickNoteWidgetProvider.refreshAll(this)
 
         setContent {
             // 外观主题：设置里的 跟随系统/浅色/深色
@@ -67,6 +76,33 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    /** .mgxd 文件关联：系统以 VIEW 打开 .mgxd 文件时读取内容并投递给 UI */
+    private fun handleViewIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val uri = intent.data ?: return
+        activityScope.launch {
+            val text = runCatching {
+                contentResolver.openInputStream(uri)?.use { ins ->
+                    val bytes = ins.readBytes()
+                    if (bytes.size > 32 * 1024 * 1024) null else String(bytes, Charsets.UTF_8)
+                }
+            }.getOrNull()
+            if (text.isNullOrBlank()) {
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "无法读取该文件，可能不是 .mgxd 备份", Toast.LENGTH_LONG).show()
+                }
+            } else {
+                MgxdIntentHolder.post(text)
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleViewIntent(intent)
+    }
+
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
