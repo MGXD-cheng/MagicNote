@@ -46,6 +46,44 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- .mgxd 备份文件关联：文件管理器 / 浏览器下载里点文件即可用 Magic Note 打开导入 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\.mgxd"
+                    android:scheme="file" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <!-- 浏览器 / 下载管理器常把 .mgxd 归类为未知类型 -->
+                <data
+                    android:mimeType="application/octet-stream"
+                    android:scheme="content" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:mimeType="application/mgxd"
+                    android:scheme="content" />
+                <data
+                    android:mimeType="application/vnd.magicnote.mgxd"
+                    android:scheme="content" />
+            </intent-filter>
         </activity>
 
         <!-- 待办提醒 / 每日进度汇总广播接收器（AlarmManager 系统跨进程投递，必须 exported=true） -->
@@ -83,6 +121,51 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-    </application>
+    
+        <!-- ===== 桌面小组件 ===== -->
+        <receiver
+            android:name=".widget.TodoWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_todo_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.CountdownWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_countdown_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.QuickNoteWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quicknote_info" />
+        </receiver>
+
+        <!-- 一句话记录：桌面组件点击后弹出的轻量输入框（AI 自动分类） -->
+        <activity
+            android:name=".widget.QuickNoteActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/Theme.MG.QuickNote"
+            android:windowSoftInputMode="stateVisible|adjustResize" />
+
+</application>
 
 </manifest>
