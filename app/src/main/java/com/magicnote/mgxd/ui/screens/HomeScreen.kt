@@ -163,7 +163,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 进度卡片（待办关闭时隐藏「今日任务进度」）
