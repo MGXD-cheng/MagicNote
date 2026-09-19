@@ -256,7 +256,7 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
             }
             val conflicts = dataVm.countConflicts()
             if (conflicts == 0) {
-                dataVm.runImport(context, ConflictPolicy.KEEP_BOTH) { r ->
+                dataVm.runImport(context, ConflictPolicy.SKIP) { r ->
                     Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
                 }
             } else {
@@ -272,19 +272,19 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
                 title = { Text("发现重复的数据") },
                 text = {
                     Text(
-                        "检测到与本地重复的条目，选择处理方式：\n" +
-                            "· 保留两份：重复项都保留（推荐）\n" +
-                            "· 覆盖：用对方数据覆盖本地\n" +
-                            "· 跳过：忽略重复项，只合并新数据"
+                        "检测到与本地重复的条目（同标题、同时间或同内容），选择处理方式：\n" +
+                            "· 跳过重复（推荐）：只合并本地没有的新数据\n" +
+                            "· 保留两份：重复项额外复制一份\n" +
+                            "· 覆盖：用对方数据覆盖本地同名条目"
                     )
                 },
                 confirmButton = {
                     TextButton(onClick = {
                         showLanConflict = false
-                        dataVm.runImport(context, ConflictPolicy.KEEP_BOTH) { r ->
+                        dataVm.runImport(context, ConflictPolicy.SKIP) { r ->
                             Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
                         }
-                    }) { Text("保留两份") }
+                    }) { Text("跳过重复") }
                 },
                 dismissButton = {
                     Row {
@@ -296,10 +296,10 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
                         }) { Text("覆盖") }
                         TextButton(onClick = {
                             showLanConflict = false
-                            dataVm.runImport(context, ConflictPolicy.SKIP) { r ->
-                                Toast.makeText(context, "同步完成：跳过 " + r.skipped + " 项", Toast.LENGTH_LONG).show()
+                            dataVm.runImport(context, ConflictPolicy.KEEP_BOTH) { r ->
+                                Toast.makeText(context, "同步完成：保留两份 " + r.duplicated + " 项", Toast.LENGTH_LONG).show()
                             }
-                        }) { Text("跳过") }
+                        }) { Text("保留两份") }
                     }
                 }
             )
@@ -395,17 +395,17 @@ private fun ImportReviewDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("导入将与现有数据合并，不直接覆盖。请选择重复记录的处理方式：")
-                Text("· 保留两份：把备份里的重复内容也加进来（数据更全）")
+                Text("· 跳过重复：重复记录不导入，只新增不重复的（推荐）")
                 Text("· 覆盖：用备份内容替换本机已有的重复记录")
-                Text("· 跳过：重复记录不导入，只新增不重复的")
+                Text("· 保留两份：把备份里的重复内容也加进来（数据更全）")
                 Text("· 取消：不导入任何内容")
             }
         },
         confirmButton = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Button(onClick = { onConfirm(ConflictPolicy.KEEP_BOTH) }, modifier = Modifier.fillMaxWidth()) { Text("保留两份（推荐）") }
+                Button(onClick = { onConfirm(ConflictPolicy.SKIP) }, modifier = Modifier.fillMaxWidth()) { Text("跳过重复（推荐）") }
                 OutlinedButton(onClick = { onConfirm(ConflictPolicy.OVERWRITE) }, modifier = Modifier.fillMaxWidth()) { Text("覆盖已有") }
-                OutlinedButton(onClick = { onConfirm(ConflictPolicy.SKIP) }, modifier = Modifier.fillMaxWidth()) { Text("跳过重复") }
+                OutlinedButton(onClick = { onConfirm(ConflictPolicy.KEEP_BOTH) }, modifier = Modifier.fillMaxWidth()) { Text("保留两份") }
                 TextButton(onClick = { onConfirm(ConflictPolicy.CANCEL) }, modifier = Modifier.fillMaxWidth()) { Text("取消导入") }
             }
         },
