@@ -1,7 +1,9 @@
 # Magic note
 
 一款集待办、日历、日记与 AI 助手于一体的 Android 效率应用。
-Jetpack Compose + Kotlin 开发，包名 com.magicnote.mgxd，当前版本 6.10。
+Jetpack Compose + Kotlin 开发，包名 com.magicnote.mgxd，当前版本 7.1。
+
+> 版本号规则：每版 +0.1（如 7.1 → 7.2 → … → 7.9 → **8.1**），不出现 x.0 与两位数小数位。
 
 ## 功能
 
@@ -56,6 +58,7 @@ Jetpack Compose + Kotlin 开发，包名 com.magicnote.mgxd，当前版本 6.10�
 - v5.9：AI规划增强（时长估算倒推/强制休息缓冲/精力曲线安排/优先级驱动排序）；日历页适配状态栏高度；每日待办完成后次日自动删除（0点清理+启动/开机/设置恢复兜底）。
 - v6.0：AI规划超时修复（AiClient 支持 per-call 超时、规划放宽到 120s、prompt 精简注入上限 20 待办/30 日程）；性能内存优化（通知渠道只初始化一次、广播协程懒加载复用、批量采纳本地冲突检测、聊天 60s 超时兜底、Gradle 并行+缓存+配置缓存加速构建）。
 - v6.2：AI 稳定性修复 + 日历交互升级。①AiClient 支持 jsonMode 自动降级：不支持的端点去掉 response_format 自动重试一次；AI 规划开启 jsonMode 提高 JSON 输出成功率；一句话建待办 60s 超时兜底降级纯文本。②日历上滑日程列表自动折叠为单周视图，头部按钮可展开/收起。③新增日程专注模式：日程卡点 ⏱ 进入全屏横屏大字时钟（秒级刷新）+ 日程标题 + 距开始/进行中倒计时，左下角截止时间小字、右下角退出按钮，进入屏幕常亮、退出恢复竖屏。
+- v7.1：①**修复导入反复出现重复数据（根因）**：冲突判定用的自然键曾用 `JsonElement.toString()`，而 `JsonPrimitive.toString()` 对字符串会带引号（`"买菜"` ≠ `买菜`），导致与本地实体拼出的键永远不匹配、`countConflicts()` 恒为 0、每次导入都当新数据插入——现统一改为 `jsonField()` 取原始文本（数字/字符串/布尔都不带额外符号，null 与缺失字段一致视为空串），本地键同步用 `s0()` 归一化，重复数据现在能被准确识别；②**导入策略默认改为「跳过重复」**：局域网同步及「导入备份」的冲突对话框都把「跳过重复」提到主推荐按钮（其次才是覆盖 / 保留两份），彻底避免误操作产生重复；③**日记锁关闭需验证身份**：打开→关闭开关时不再直接关闭，而是弹出验证（已设密码可输密码，或用指纹/人脸/设备锁验证），防止他人随手关闭；④版本号规则改为每版 +0.1，x.9 之后进 (x+1).1（本版 7.1）。
 - v6.10：①**修复局域网「下载并导入」无效**：根因是 `LaunchedEffect(lanImportText)` 里过早调用 `consumeLanImport()` 清空了 key，导致协程重启、正在执行的 `countConflicts()` 被取消，导入永远不执行——现在把清空移到所有挂起调用之后；②**新增日记锁**（设置 → 日记锁）：可选用「数字密码」（4-6 位，随机盐 + SHA-256 哈希，不存明文）或「指纹 / 人脸 / 设备锁」（走系统 KeyguardManager 设备凭据，零第三方依赖），开启后进入日记页需先验证；锁屏页含 6 位圆点指示 + 数字键盘 + 错误提示 +「忘记密码？用设备锁验证解锁」；设置页支持开关、切换方式、设置/修改密码（修改需验证旧密码）；Manifest 增加 USE_BIOMETRIC；③按用户要求**撤销**了上一轮给局域网同步加的口令/隐私保护文案（LanSyncServer 保持无口令版本）。
 - v6.9：设置页整理。①「局域网同步」并入「数据备份与迁移」卡片（同一张卡片内：备份/导入/CSV + 局域网同步区，用分隔线区分），DataBackupCard 签名改为 (dataVm, vm)；②局域网网页下载修复：/export.mgxd 响应新增 `Content-Disposition: attachment; filename="MagicNote-YYYYMMDD.mgxd"`，HTML 下载按钮加 download 属性——浏览器现在会保存成带 .mgxd 后缀的文件；③设置页底部署名 "design by MGXD(and DeepSeek)" → "Designed by MGXD(and DeepSeek)"。
 - v6.8：五项功能齐发。①**日历颜色彻底修复**：改为 Int 色板 `EVENT_COLOR_ARGB`（不再用 Compose `Color.value.toInt()`，该 64 位打包值在某些版本返回 0 → 之前「选什么颜色都变黑」的根因）；新增 `safeEventColor()`（脏数据/alpha=0 回退默认紫并强制不透明）；月视图每个日程按真实颜色逐点显示（最多 4 个）并加深色描边，EventCard 色条加宽到 6dp + 描边；②**局域网同步/预览**：零依赖内置 HTTP 服务（ServerSocket，端口 8898），`GET /` 浏览器预览数据概览、`GET /export.mgxd` 下载完整备份；另一台设备在设置填地址即可「下载并导入」，复用现有冲突策略（保留两份/覆盖/跳过）；③**检查更新**：设置→关于与更新，GitHub `releases/latest` 取版本与 APK asset（无 release 时回退 tags），语义化版本比较，可直接下载并用 FileProvider 调起系统安装器；④**AI 日记读取不全修复**：原来只注入最近 3 篇 + 每篇 60 字预览，现改为——用户问日记或点名日期（9月3号/昨天/9-3/2026-09-03）时注入**相关日记全文**（最多 10 篇 × 4000 字），普通提问仍用轻量预览省 token；⑤**日记缩略图可查看**：点击缩略图打开全屏查看器（黑底大图，支持左右切换 + 页码）。另：Manifest 增加 `REQUEST_INSTALL_PACKAGES`、`usesCleartextTraffic`、FileProvider（cache/apk_update）。
