@@ -2,4 +2,12 @@
 <resources>
 
     <style name="Theme.MyApplication" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- 一句话记录（小组件唤起）：透明背景，看起来像悬浮对话框 -->
+    <style name="Theme.MG.QuickNote" parent="Theme.MyApplication">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
 </resources>
