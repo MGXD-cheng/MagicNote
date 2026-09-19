@@ -1,5 +1,8 @@
 package com.magicnote.mgxd.ui.navigation
 
+import androidx.compose.runtime.collectAsState
+import com.magicnote.mgxd.ui.screens.MgxdImportDialog
+import com.magicnote.mgxd.util.MgxdIntentHolder
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -80,6 +83,16 @@ fun AppNav() {
     val aiVm: AiViewModel = appViewModel(AiViewModel::class.java) { it.repository.let { r -> AiViewModel(r) } }
     val settingsVm: SettingsViewModel = appViewModel(SettingsViewModel::class.java) { it.repository.let { r -> SettingsViewModel(r) } }
     val dataVm: DataTransferViewModel = appViewModel(DataTransferViewModel::class.java) { it.repository.let { r -> DataTransferViewModel(r) } }
+
+    // .mgxd 文件关联：从系统打开备份文件时弹出导入确认
+    val pendingMgxdText by MgxdIntentHolder.pending.collectAsState()
+    pendingMgxdText?.let { text ->
+        MgxdImportDialog(
+            text = text,
+            dataVm = dataVm,
+            onDismiss = { MgxdIntentHolder.consume() }
+        )
+    }
 
     // 功能模块开关：关闭的模块从底部导航与首页隐藏
     val moduleCfg by settingsVm.moduleConfig.collectAsStateWithLifecycle()
