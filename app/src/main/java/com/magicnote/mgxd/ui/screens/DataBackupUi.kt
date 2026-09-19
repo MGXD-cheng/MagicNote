@@ -383,6 +383,79 @@ private sealed interface ImportStage {
 }
 
 /** 冲突处理策略对话框 */
+/**
+ * .mgxd 文件导入确认（文件关联入口：从系统点开 .mgxd 备份文件时弹出）
+ */
+@Composable
+fun MgxdImportDialog(
+    text: String,
+    dataVm: DataTransferViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var ready by remember(text) { mutableStateOf(false) }
+    var valid by remember(text) { mutableStateOf(true) }
+    var conflicts by remember(text) { mutableStateOf(0) }
+    val transferState by dataVm.state.collectAsStateWithLifecycle()
+
+    LaunchedEffect(text) {
+        val ok = dataVm.prepareImport(text)
+        valid = ok
+        if (ok) conflicts = dataVm.countConflicts()
+        ready = true
+        // 注意：这里没有清空调用方的 text（key），避免协程被取消
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!transferState.busy) onDismiss() },
+        title = { Text(if (valid) "导入 .mgxd 备份" else "文件无法识别") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!ready) {
+                    Text("正在读取备份…")
+                } else if (!valid) {
+                    Text("这不是有效的 .mgxd 备份文件，无法导入。")
+                } else if (transferState.busy) {
+                    Text(transferState.label)
+                    if (transferState.progress != null) {
+                        LinearProgressIndicator(
+                            progress = { transferState.progress!! },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    Text("已读取备份内容（" + text.length + " 字符）")
+                    Text(
+                        if (conflicts > 0) "检测到 " + conflicts + " 条与本地重复的数据，导入时默认跳过重复。"
+                        else "没有检测到重复数据，可以放心导入。"
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (valid && !transferState.busy) {
+                TextButton(onClick = {
+                    dataVm.runImport(context, ConflictPolicy.SKIP) { r ->
+                        Toast.makeText(
+                            context,
+                            "导入完成：新增 " + r.imported + " 项，跳过重复 " + r.skipped + " 项",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        onDismiss()
+                    }
+                }) { Text("导入") }
+            }
+        },
+        dismissButton = {
+            if (!transferState.busy) {
+                TextButton(onClick = onDismiss) { Text("取消") }
+            }
+        }
+    )
+}
+
 @Composable
 private fun ImportReviewDialog(
     conflictCount: Int,
