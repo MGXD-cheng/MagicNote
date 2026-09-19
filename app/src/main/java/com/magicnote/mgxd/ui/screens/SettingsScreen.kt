@@ -1,5 +1,7 @@
 package com.magicnote.mgxd.ui.screens
 
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.runtime.rememberCoroutineScope
 import com.magicnote.mgxd.util.DiaryLock
@@ -493,6 +495,21 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                 var newPwd by remember { mutableStateOf("") }
                 var confirmPwd by remember { mutableStateOf("") }
                 var pwdError by remember { mutableStateOf<String?>(null) }
+                var showDisableDialog by remember { mutableStateOf(false) }
+                var disablePwd by remember { mutableStateOf("") }
+                var disableError by remember { mutableStateOf<String?>(null) }
+                // 设备锁（指纹 / 人脸 / 设备密码）验证：通过后才关闭日记锁
+                val disableLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (result.resultCode == android.app.Activity.RESULT_OK) {
+                        vm.setDiaryLockEnabled(false)
+                        showDisableDialog = false
+                        Toast.makeText(context, "日记锁已关闭", Toast.LENGTH_SHORT).show()
+                    } else {
+                        disableError = "未通过验证，日记锁保持开启"
+                    }
+                }
 
                 Text(
                     "开启后，进入日记页需要验证（数字密码或指纹 / 人脸 / 设备锁），保护私密记录",
@@ -519,6 +536,10 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                                 // 首次开启：先设置数字密码
                                 oldPwd = ""; newPwd = ""; confirmPwd = ""; pwdError = null
                                 showPwdDialog = true
+                            } else if (!on) {
+                                // 关闭：必须验证身份（数字密码或设备锁），防止他人随手关闭
+                                disablePwd = ""; disableError = null
+                                showDisableDialog = true
                             } else {
                                 vm.setDiaryLockEnabled(on)
                             }
@@ -627,6 +648,58 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                         },
                         dismissButton = {
                             TextButton(onClick = { showPwdDialog = false }) { Text("取消") }
+                        }
+                    )
+                }
+
+                if (showDisableDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showDisableDialog = false },
+                        title = { Text("关闭日记锁") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("为保护隐私，关闭日记锁前需要验证身份：")
+                                if (hasPassword) {
+                                    OutlinedTextField(
+                                        value = disablePwd,
+                                        onValueChange = { v -> disablePwd = v.filter { it.isDigit() }.take(6) },
+                                        label = { Text("当前密码") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                disableError?.let {
+                                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Row {
+                                if (hasPassword) {
+                                    TextButton(onClick = {
+                                        lockScope.launch {
+                                            if (vm.verifyDiaryPassword(disablePwd)) {
+                                                vm.setDiaryLockEnabled(false)
+                                                showDisableDialog = false
+                                                Toast.makeText(context, "日记锁已关闭", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                disableError = "密码不正确"
+                                            }
+                                        }
+                                    }) { Text("确认关闭") }
+                                }
+                                TextButton(onClick = {
+                                    val intent = DiaryLock.deviceCredentialIntent(context, "验证以关闭日记锁")
+                                    if (intent == null) {
+                                        disableError = "设备未设置锁屏，无法用设备锁验证"
+                                    } else {
+                                        disableLauncher.launch(intent)
+                                    }
+                                }) { Text("用设备锁验证") }
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDisableDialog = false }) { Text("取消") }
                         }
                     )
                 }
