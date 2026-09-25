@@ -5,6 +5,18 @@ Jetpack Compose + Kotlin 开发，包名 com.magicnote.mgxd，当前版本 7.2�
 
 > 版本号规则：每版 +0.1（如 7.1 → 7.2 → … → 7.9 → **8.1**），不出现 x.0 与两位数小数位。
 
+## 📥 下载安装
+
+[![Latest Release](https://img.shields.io/github/v/release/MGXD-cheng/MagicNote?label=latest)](https://github.com/MGXD-cheng/MagicNote/releases/latest)
+
+1. 打开 [**Releases**](https://github.com/MGXD-cheng/MagicNote/releases/latest)，下载最新的 `MagicNote-x.x-release.apk`
+2. 手机上点安装（首次会提示「允许安装未知来源应用」，同意即可）
+3. 打开就能用：**无需注册、无需登录、无广告、不联网也能用**，所有数据都保存在你自己手机里
+
+- 系统要求：Android 7.0（API 24）及以上
+- AI 功能（对话 / 规划 / 日记自动回复 / 一句话记录）需要先在「设置 → Magic AI 接口配置」填入你自己的 API Key（任何 OpenAI 兼容接口都行，如 DeepSeek / Kimi / 通义）。不填也能正常使用全部本地功能
+- 数据备份与迁移：设置 →「数据备份与迁移」，支持导出 `.mgxd` 备份文件、CSV，以及两台手机在同一 Wi-Fi 下互传
+
 ## 功能
 
 - 待办：今日/长期双类型，AI 一句话建待办，点击即编辑，到期提醒。
