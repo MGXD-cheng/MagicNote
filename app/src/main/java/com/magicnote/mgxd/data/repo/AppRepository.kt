@@ -115,6 +115,10 @@ suspend fun clearChats() = db.chatDao().clearAll()
     val modelVision get() = prefs.modelVision
     suspend fun saveModelVision(enabled: Boolean) = prefs.saveModelVision(enabled)
 
+    /** Magic AI 输出是否自动渲染 Markdown */
+    val markdownRender get() = prefs.markdownRender
+    suspend fun saveMarkdownRender(enabled: Boolean) = prefs.saveMarkdownRender(enabled)
+
     suspend fun saveScreenTimeWarn(pkg: String, at: Long) =
         prefs.saveScreenTimeWarn(pkg, at)
 
