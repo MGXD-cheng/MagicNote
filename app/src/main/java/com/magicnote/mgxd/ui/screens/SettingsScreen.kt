@@ -294,6 +294,28 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                         onCheckedChange = { vm.saveModelVision(it) }
                     )
                 }
+                // 自动渲染 Markdown：AI 回复含 Markdown 语法时自动排版渲染
+                val markdownRender by vm.markdownRender.collectAsStateWithLifecycle()
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("自动渲染 Markdown", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "开启后：Magic AI 回复里的 **粗体**、# 标题、- 列表、`代码` 等 Markdown 语法会自动排版显示（关闭则按原始文本显示）",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Switch(
+                        checked = markdownRender,
+                        onCheckedChange = { vm.saveMarkdownRender(it) }
+                    )
+                }
                 Text(
                     "支持 OpenAI 及所有兼容接口（DeepSeek / Kimi / 通义 / 本地 Ollama 等）",
                     style = MaterialTheme.typography.labelMedium,
