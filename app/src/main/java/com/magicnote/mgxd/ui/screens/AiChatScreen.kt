@@ -29,6 +29,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.magicnote.mgxd.ui.components.MarkdownText
 import com.magicnote.mgxd.ui.viewmodel.AiViewModel
@@ -76,22 +80,31 @@ fun AiChatScreen(vm: AiViewModel) {
 
     // 聊天记录导出（SAF 保存框，无需存储权限）
     var pendingExport by remember { mutableStateOf("") }
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/markdown")
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            runCatching {
-                context.contentResolver.openOutputStream(uri)?.use {
-                    it.write(pendingExport.toByteArray(Charsets.UTF_8))
+    // 导出对话框：选范围 + 选格式（Markdown / .mgxd）
+    var showExportDialog by remember { mutableStateOf(false) }
+    val writeExport: (Uri?) -> Unit = { uri ->
+        if (uri == null) {
+            Toast.makeText(context, "已取消导出", Toast.LENGTH_SHORT).show()
+        } else {
+            scope.launch {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use {
+                        it.write(pendingExport.toByteArray(Charsets.UTF_8))
+                    }
+                }.onSuccess {
+                    Toast.makeText(context, "✅ 聊天记录已导出", Toast.LENGTH_LONG).show()
+                }.onFailure {
+                    Toast.makeText(context, "导出失败：${it.message}", Toast.LENGTH_LONG).show()
                 }
-            }.onSuccess {
-                Toast.makeText(context, "✅ 聊天记录已导出", Toast.LENGTH_LONG).show()
-            }.onFailure {
-                Toast.makeText(context, "导出失败：${it.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
+    val mdExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/markdown")
+    ) { uri: Uri? -> writeExport(uri) }
+    val mgxdExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri: Uri? -> writeExport(uri) }
 
     LaunchedEffect(messages.size, loading) {
         if (messages.isNotEmpty()) {
@@ -122,11 +135,7 @@ fun AiChatScreen(vm: AiViewModel) {
                 },
                 actions = {
                     if (messages.isNotEmpty()) {
-                        IconButton(onClick = {
-                            pendingExport = vm.buildChatExportText()
-                            val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.getDefault()).format(Date())
-                            exportLauncher.launch("MagicAI-chat-$stamp.md")
-                        }) {
+                        IconButton(onClick = { showExportDialog = true }) {
                             Icon(Icons.Default.Download, contentDescription = "导出聊天记录")
                         }
                         IconButton(onClick = { vm.clearChat() }) {
@@ -174,7 +183,7 @@ fun AiChatScreen(vm: AiViewModel) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(messages, key = { it.timestamp }) { msg ->
+                    items(messages, key = { it.id }) { msg ->
                         ChatBubble(
                             text = msg.content,
                             isUser = msg.role == "user",
@@ -240,6 +249,25 @@ fun AiChatScreen(vm: AiViewModel) {
                 }
             }
         }
+    }
+
+    // ===== 聊天记录导出弹窗（选范围 + 格式） =====
+    if (showExportDialog) {
+        ChatExportDialog(
+            messages = messages,
+            onDismiss = { showExportDialog = false },
+            onExport = { kind, selected ->
+                showExportDialog = false
+                val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.getDefault()).format(Date())
+                if (kind == "mgxd") {
+                    pendingExport = vm.buildChatExportMgxd(selected)
+                    mgxdExportLauncher.launch("MagicNote-chat-$stamp.mgxd")
+                } else {
+                    pendingExport = vm.buildChatExportText(selected)
+                    mdExportLauncher.launch("MagicAI-chat-$stamp.md")
+                }
+            }
+        )
     }
 
     // ===== AI 笔记预览弹窗：可提要求重新生成，满意后再保存 =====
@@ -421,4 +449,89 @@ private fun formatChatTime(millis: Long): String {
     } else {
         time.format(DateTimeFormatter.ofPattern("M月d日 HH:mm"))
     }
+}
+
+/** 聊天记录导出对话框：选择导出范围 + Markdown / .mgxd（可导入） */
+@Composable
+private fun ChatExportDialog(
+    messages: List<AiViewModel.ChatItem>,
+    onDismiss: () -> Unit,
+    onExport: (String, List<AiViewModel.ChatItem>) -> Unit
+) {
+    var kind by remember { mutableStateOf("md") }
+    var selected by remember(messages) { mutableStateOf(messages.map { it.id }.toSet()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("导出聊天记录") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 430.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = kind == "md", onClick = { kind = "md" })
+                    Text("Markdown", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.width(8.dp))
+                    RadioButton(selected = kind == "mgxd", onClick = { kind = "mgxd" })
+                    Text(".mgxd（可导入）", style = MaterialTheme.typography.bodyMedium)
+                }
+                Text(
+                    if (kind == "mgxd") "导出为 .mgxd 后，可在「设置 → 数据备份与迁移 → 导入备份」里把聊天记录导回来"
+                    else "导出为 Markdown 文本，方便阅读与存档",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("已选 ${selected.size}/${messages.size} 条", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.width(6.dp))
+                    TextButton(onClick = { selected = messages.map { it.id }.toSet() }) { Text("全选") }
+                    TextButton(onClick = { selected = messages.takeLast(20).map { it.id }.toSet() }) { Text("最近 20 条") }
+                    TextButton(onClick = { selected = emptySet() }) { Text("全不选") }
+                }
+                HorizontalDivider()
+                LazyColumn(modifier = Modifier.heightIn(max = 250.dp)) {
+                    items(messages, key = { it.id }) { m ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = m.id in selected,
+                                onCheckedChange = { on ->
+                                    selected = if (on) selected + m.id else selected - m.id
+                                }
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    (if (m.role == "user") "🧑 我" else "🤖 Magic AI") + " · " + formatChatTime(m.timestamp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                Text(
+                                    m.content.replace('\n', ' '),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    enabled = selected.isNotEmpty(),
+                    onClick = { onExport(kind, messages.filter { it.id in selected }) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("导出所选（${selected.size} 条）") }
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("取消") }
+            }
+        },
+        dismissButton = {}
+    )
 }
