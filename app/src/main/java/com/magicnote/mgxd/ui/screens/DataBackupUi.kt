@@ -48,12 +48,22 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.magicnote.mgxd.ui.viewmodel.ConflictPolicy
 import com.magicnote.mgxd.ui.viewmodel.DataTransferViewModel
+import com.magicnote.mgxd.lan.LanApk
 import com.magicnote.mgxd.ui.viewmodel.SettingsViewModel
 import com.magicnote.mgxd.util.MgxdCodec
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/** 取本机已安装的 APK（供局域网网页直接下载 App 安装包） */
+private fun buildLocalApk(context: Context): LanApk? = runCatching {
+    val file = File(context.applicationInfo.sourceDir)
+    if (!file.exists()) return@runCatching null
+    val ver = context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0"
+    LanApk(fileName = "MagicNote-$ver-release.apk", bytes = file.readBytes())
+}.getOrNull()
 
 /** 数据管理：.mgxd 导入导出 + CSV 出口 */
 @Composable
@@ -172,7 +182,7 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
         HorizontalDivider()
         Text("局域网同步（两台设备互传）", style = MaterialTheme.typography.titleMedium)
         Text(
-            "两台设备连同一 Wi-Fi：A 开启服务后，B 用浏览器打开即可预览数据并下载 .mgxd 备份；也可在下方填入 A 的地址，一键合并数据（图片一起同步）",
+            "两台设备连同一 Wi-Fi：A 开启服务后，B 用浏览器打开该地址即可：① 下载 Magic Note 安装包（APK）② 预览数据 ③ 下载完整 .mgxd 备份（与「导出数据」质量完全一致，含全部图片）；也可在下方填入 A 的地址一键合并数据",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.outline
         )
@@ -191,7 +201,7 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
                 onClick = {
                     vm.startLanSync(
                         exportProvider = { dataVm.buildMgxdText() },
-                        summaryProvider = { dataVm.summaryText() }
+                        summaryProvider = { dataVm.summaryText() }, apkProvider = { buildLocalApk(context) }
                     )
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -272,7 +282,7 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
                 title = { Text("发现重复的数据") },
                 text = {
                     Text(
-                        "检测到与本地重复的条目（同标题、同时间或同内容），选择处理方式：\n" +
+                        "检测到重复条目（判定规则：同一类型 + 同一天同一分钟 = 重复），选择处理方式：\n" +
                             "· 跳过重复（推荐）：只合并本地没有的新数据\n" +
                             "· 保留两份：重复项额外复制一份\n" +
                             "· 覆盖：用对方数据覆盖本地同名条目"
@@ -428,7 +438,7 @@ fun MgxdImportDialog(
                 } else {
                     Text("已读取备份内容（" + text.length + " 字符）")
                     Text(
-                        if (conflicts > 0) "检测到 " + conflicts + " 条与本地重复的数据，导入时默认跳过重复。"
+                        if (conflicts > 0) "检测到 " + conflicts + " 条重复数据（同一类型 + 同一天同一分钟视为同一条），导入时默认跳过重复。"
                         else "没有检测到重复数据，可以放心导入。"
                     )
                 }
@@ -467,7 +477,7 @@ private fun ImportReviewDialog(
         title = { Text("发现 $conflictCount 条重复数据") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("导入将与现有数据合并，不直接覆盖。请选择重复记录的处理方式：")
+                Text("导入将与现有数据合并，不直接覆盖。重复判定：同一类型 + 同一天同一分钟视为同一条。请选择处理方式：")
                 Text("· 跳过重复：重复记录不导入，只新增不重复的（推荐）")
                 Text("· 覆盖：用备份内容替换本机已有的重复记录")
                 Text("· 保留两份：把备份里的重复内容也加进来（数据更全）")
