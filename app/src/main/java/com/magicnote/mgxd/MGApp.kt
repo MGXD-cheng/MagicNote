@@ -1,6 +1,7 @@
 package com.magicnote.mgxd
 
 import android.app.Application
+import android.os.StrictMode
 import com.magicnote.mgxd.data.db.AppDatabase
 import com.magicnote.mgxd.data.prefs.UserPrefs
 import com.magicnote.mgxd.data.repo.AppRepository
@@ -15,6 +16,25 @@ class MGApp : Application() {
         private set
 
     override fun onCreate() {
+        // 调试构建开启 StrictMode：把主线程磁盘/网络读写、未关闭资源直接打到 Logcat
+        if (BuildConfig.DEBUG) {
+            StrictMode.setThreadPolicy(
+                StrictMode.ThreadPolicy.Builder()
+                    .detectDiskReads()
+                    .detectDiskWrites()
+                    .detectNetwork()
+                    .penaltyLog()
+                    .build()
+            )
+            StrictMode.setVmPolicy(
+                StrictMode.VmPolicy.Builder()
+                    .detectLeakedClosableObjects()
+                    .detectActivityLeaks()
+                    .penaltyLog()
+                    .build()
+            )
+        }
+
         super.onCreate()
         container = AppContainer(this)
     }
