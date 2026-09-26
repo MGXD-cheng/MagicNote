@@ -1,5 +1,12 @@
 package com.magicnote.mgxd.ui.navigation
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.collectAsState
 import com.magicnote.mgxd.ui.screens.MgxdImportDialog
 import com.magicnote.mgxd.util.MgxdIntentHolder
@@ -72,8 +79,13 @@ private val tabs = listOf(
 )
 
 @Composable
-fun AppNav() {
+fun AppNav(initialTab: Int? = null) {
     var currentTab by rememberSaveable { mutableIntStateOf(0) }
+
+    // 小组件/外部入口指定的 tab（消费一次即可）
+    LaunchedEffect(initialTab) {
+        if (initialTab != null && initialTab in tabs.indices) currentTab = initialTab
+    }
     val context = LocalContext.current
 
     // 各页面的 ViewModel（每个 tab 独立持有）
@@ -126,8 +138,23 @@ fun AppNav() {
     var editDiaryTarget by remember { mutableStateOf<DiaryEntity?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.weight(1f)) {
-            when (currentTab) {
+        // 页面切换动画：按 tab 索引方向横滑 + 淡入淡出
+        AnimatedContent(
+            targetState = currentTab,
+            transitionSpec = {
+                val forward = targetState > initialState
+                (
+                    slideInHorizontally(tween(260)) { w -> if (forward) w / 4 else -w / 4 } +
+                        fadeIn(tween(220))
+                    ) togetherWith (
+                    slideOutHorizontally(tween(200)) { w -> if (forward) -w / 4 else w / 4 } +
+                        fadeOut(tween(160))
+                    )
+            },
+            modifier = Modifier.weight(1f),
+            label = "tab"
+        ) { tab ->
+            when (tab) {
                 0 -> HomeScreen(
                     todoVm = todoVm,
                     calendarVm = calendarVm,
