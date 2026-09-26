@@ -183,7 +183,7 @@ fun AiChatScreen(vm: AiViewModel) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(messages, key = { it.id }) { msg ->
+                    items(messages, key = { "exp_${it.id}" }) { msg ->
                         ChatBubble(
                             text = msg.content,
                             isUser = msg.role == "user",
