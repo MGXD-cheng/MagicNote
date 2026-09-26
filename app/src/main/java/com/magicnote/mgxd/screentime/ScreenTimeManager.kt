@@ -176,7 +176,9 @@ object ScreenTimeManager {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val start = todayStartMillis()
         val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, System.currentTimeMillis())
-        return stats.sumOf { it.totalTimeInForeground }
+        // 口径与分类统计一致：排除自己，避免总数偏大
+        return stats.filter { it.packageName != context.packageName }
+            .sumOf { it.totalTimeInForeground }
     }
 
     /** 应用使用时长排行（按时长降序） */
