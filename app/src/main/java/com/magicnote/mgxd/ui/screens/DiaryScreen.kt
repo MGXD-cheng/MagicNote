@@ -11,7 +11,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -253,22 +259,53 @@ private fun DiaryEntryRow(
         }
     }
 
-    // 全屏图片查看器（点击缩略图打开，支持左右切换 / 页码）
+    // 全屏图片查看器（点击缩略图打开；支持双指缩放 / 双击放大 / 拖动 / 左右切换）
     viewerImages?.let { images ->
         Dialog(onDismissRequest = { viewerImages = null }) {
+            val currentPath = images.getOrNull(viewerIndex)
+            // 缩放与平移状态：切换图片自动重置
+            var scale by remember(currentPath) { mutableFloatStateOf(1f) }
+            var offset by remember(currentPath) { mutableStateOf(Offset.Zero) }
             Box(
                 modifier = Modifier.fillMaxSize().background(Color.Black),
                 contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
-                val currentPath = images.getOrNull(viewerIndex)
                 val fullBitmap = remember(currentPath) {
                     runCatching { android.graphics.BitmapFactory.decodeFile(currentPath) }.getOrNull()
                 }
                 if (fullBitmap != null) {
                     Image(
                         bitmap = fullBitmap.asImageBitmap(),
-                        contentDescription = "查看图片",
-                        modifier = Modifier.fillMaxWidth(),
+                        contentDescription = "查看图片（双指缩放 / 双击放大）",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale,
+                                translationX = offset.x,
+                                translationY = offset.y
+                            )
+                            // 双指缩放 + 拖动（放大后才允许平移）
+                            .pointerInput(currentPath) {
+                                detectTransformGestures { _, pan, zoom, _ ->
+                                    val next = (scale * zoom).coerceIn(1f, 6f)
+                                    scale = next
+                                    offset = if (next > 1f) offset + pan else Offset.Zero
+                                }
+                            }
+                            // 双击放大 / 还原
+                            .pointerInput(currentPath) {
+                                detectTapGestures(
+                                    onDoubleTap = {
+                                        if (scale > 1f) {
+                                            scale = 1f
+                                            offset = Offset.Zero
+                                        } else {
+                                            scale = 2.5f
+                                        }
+                                    }
+                                )
+                            },
                         contentScale = ContentScale.Fit
                     )
                 }
@@ -283,7 +320,9 @@ private fun DiaryEntryRow(
                     ) { Icon(Icons.Default.KeyboardArrowRight, contentDescription = "下一张", tint = Color.White) }
                 }
                 Text(
-                    "${viewerIndex + 1} / ${images.size}",
+                    "${viewerIndex + 1} / ${images.size}" +
+                        if (scale > 1f) "  ·  " + String.format("%.1f", scale) + "x（双击还原）"
+                        else "  ·  双击放大 / 双指缩放",
                     color = Color.White,
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(28.dp)
