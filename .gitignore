@@ -29,3 +29,6 @@ local.properties
 
 # ===== Kotlin 构建缓存 =====
 /.kotlin/
+
+# 本机构建辅助二进制（勿提交）
+tools/aapt2/
