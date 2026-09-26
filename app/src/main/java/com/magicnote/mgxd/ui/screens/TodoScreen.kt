@@ -187,7 +187,7 @@ fun TodoScreen(
                                 )
                             }
                         } else {
-                            items(habits, key = { it.id }) { habit ->
+                            items(habits, key = { "habit_${it.id}" }) { habit ->
                                 HabitCard(
                                     habit = habit,
                                     checkedToday = habit.checkInDates.contains(LocalDate.now().toString()),
@@ -237,7 +237,7 @@ fun TodoScreen(
                                 )
                             }
                         } else {
-                            items(countdowns, key = { it.id }) { countdown ->
+                            items(countdowns, key = { "cd_${it.id}" }) { countdown ->
                                 CountdownCard(
                                     countdown = countdown,
                                     onEdit = { editCountdownTarget = countdown },
