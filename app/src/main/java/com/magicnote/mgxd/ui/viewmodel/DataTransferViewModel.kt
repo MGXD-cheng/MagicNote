@@ -195,43 +195,40 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
         return root != null
     }
 
-    /** 统计当前文件会与已有数据冲突的条数（按类型自然键 + id 双重去重） */
+    /**
+     * 统计当前文件会与已有数据冲突的条数
+     *
+     * 规则（v7.3 起）：**同一类型 + 同一天同一分钟 = 重复项**。
+     * 也就是只比较记录的时间（精确到分钟），不再比较标题/内容，也不再用 id 判重——
+     * 这样「同一批数据反复导入」不会产生重复，同时不同时间写的相似内容也不会被误判。
+     */
     suspend fun countConflicts(): Int = withContext(Dispatchers.IO) {
         val root = pendingImportRoot ?: return@withContext 0
         val items = MgxdCodec.dataList(root)
         val existingKeys = existingKeySets().toMutableSet()
-        val idSets = HashMap<String, Set<Long>>()
-        items.count { itm ->
-            val type = (itm["type"] as? JsonPrimitive)?.content ?: return@count false
-            val id = (itm["id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
-            keyOf(itm) in existingKeys || (id > 0 && idSets.getOrPut(type) { existingId(type) }.contains(id))
-        }
+        items.count { itm -> keyOf(itm) in existingKeys }
     }
 
     private suspend fun existingKeySets(): Set<String> {
         val s = HashSet<String>()
-        repo.observeTodos().first().forEach { s.add("todo:" + todoKey(it)) }
-        repo.observeAllEvents().first().forEach { s.add("event:" + eventKey(it)) }
-        repo.observeDiaries().first().forEach { s.add("diary:" + diaryKey(it)) }
-        repo.observeHabits().first().forEach { s.add("habit:" + s0(it.title)) }
-        repo.observeCountdowns().first().forEach { s.add("countdown:" + s0(it.title) + "|" + s0(it.targetDate)) }
+        repo.observeTodos().first().forEach { s.add(minuteKey("todo", it.dueTime ?: it.createdAt)) }
+        repo.observeAllEvents().first().forEach { s.add(minuteKey("event", it.startTime)) }
+        repo.observeDiaries().first().forEach { s.add(minuteKey("diary", it.createdAt)) }
+        repo.observeHabits().first().forEach { s.add(minuteKey("habit", it.createdAt)) }
+        repo.observeCountdowns().first().forEach {
+            s.add(minuteKey("countdown", it.targetDate.takeIf { t -> t > 0L } ?: it.createdAt))
+        }
         return s
     }
 
-    private suspend fun existingId(type: String): Set<Long> = when (type) {
-        "todo" -> repo.observeTodos().first().map { it.id }.toHashSet()
-        "event" -> repo.observeAllEvents().first().map { it.id }.toHashSet()
-        "diary" -> repo.observeDiaries().first().map { it.id }.toHashSet()
-        "habit" -> repo.observeHabits().first().map { it.id }.toHashSet()
-        "countdown" -> repo.observeCountdowns().first().map { it.id }.toHashSet()
-        else -> emptySet()
+    /** 分钟键：`类型:yyyy-MM-dd HH:mm`（同一天同一分钟视为同一条） */
+    private fun minuteKey(type: String, millis: Long?): String {
+        if (millis == null || millis <= 0L) return "$type:none"
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+        return type + ":" + java.time.Instant.ofEpochMilli(millis)
+            .atZone(java.time.ZoneId.systemDefault())
+            .format(fmt)
     }
-
-    private fun todoKey(t: TodoEntity) = s0(t.title) + "|" + s0(t.dueTime) + "|" + s0(t.isLongTerm)
-    private fun eventKey(e: CalendarEventEntity) = s0(e.title) + "|" + s0(e.startTime)
-    private fun diaryKey(d: DiaryEntity) = s0(d.date) + "|" + s0(d.content)
-
-    private fun s0(v: Any?): String = if (v == null) "" else v.toString()
 
     /** 取 JSON 字段原始文本（字符串不带引号；数字、布尔原样；null / 缺失 → 空串） */
     private fun jsonField(o: JsonObject, key: String): String {
@@ -241,22 +238,22 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
     }
 
     /**
-     * 冲突判定用的自然键。
+     * 冲突判定用的时间键（v7.3 起）：同一类型 + 同一天同一分钟 → 重复项。
      *
-     * ⚠️ 关键修复：不能用 JsonElement.toString()——JsonPrimitive.toString() 对字符串会带引号
-     * （"买菜" ≠ 买菜），导致与本地实体拼出的键永不一致、countConflicts 恒为 0、
-     * 导入时同一批数据被反复插入（「总是有重复数据」的根因）。
+     * ⚠️ 仍然不能用 JsonElement.toString()——JsonPrimitive.toString() 对字符串会带引号
+     * （"买菜" ≠ 买菜），必须用 jsonField() 取原始文本，否则与本地键永不一致。
      */
     private fun keyOf(o: JsonObject): String {
         val type = jsonField(o, "type")
-        return when (type) {
-            "todo" -> "todo:" + jsonField(o, "title") + "|" + jsonField(o, "dueTime") + "|" + jsonField(o, "isLongTerm")
-            "event" -> "event:" + jsonField(o, "title") + "|" + jsonField(o, "startTime")
-            "diary" -> "diary:" + jsonField(o, "date") + "|" + jsonField(o, "content")
-            "habit" -> "habit:" + jsonField(o, "title")
-            "countdown" -> "countdown:" + jsonField(o, "title") + "|" + jsonField(o, "targetDate")
-            else -> type
+        val time = when (type) {
+            "todo" -> jsonField(o, "dueTime").toLongOrNull() ?: jsonField(o, "createdAt").toLongOrNull()
+            "event" -> jsonField(o, "startTime").toLongOrNull()
+            "diary" -> jsonField(o, "createdAt").toLongOrNull() ?: jsonField(o, "date").toLongOrNull()
+            "habit" -> jsonField(o, "createdAt").toLongOrNull()
+            "countdown" -> jsonField(o, "targetDate").toLongOrNull() ?: jsonField(o, "createdAt").toLongOrNull()
+            else -> null
         }
+        return minuteKey(type, time)
     }
 
     /**
@@ -278,9 +275,8 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                     val imageDir = File(context.filesDir, "diary_images").apply { mkdirs() }
                     importImageDir = imageDir
 
+                    // v7.3：重复判定只看「同一天同一分钟」，不再按 id 判重
                     val existingKeys = existingKeySets().toMutableSet()
-                    val existingById = HashMap<String, MutableSet<Long>>()
-                    listOf("todo", "event", "diary", "habit", "countdown").forEach { t -> existingById[t] = existingId(t).toMutableSet() }
 
                     var imported = 0; var skipped = 0; var overwritten = 0; var duplicated = 0; var failedImages = 0
                     var idx = 0
@@ -291,7 +287,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                         val type = (item["type"] as? JsonPrimitive)?.content ?: continue
                         val rawId = (item["id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
                         val key = keyOf(item)
-                        val conflict = key in existingKeys || existingById[type]?.contains(rawId) == true
+                        val conflict = key in existingKeys
                         val action = when {
                             !conflict -> "insert"
                             policy == ConflictPolicy.SKIP -> "skip"
@@ -334,7 +330,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
      * 组装全量 .mgxd 文本（局域网同步 / 预览导出用；图片保留透明通道）
      * 失败返回空串。
      */
-    suspend fun buildMgxdText(): String = withContext(Dispatchers.IO) {
+    suspend fun buildMgxdText(preserveAlpha: Boolean = true): String = withContext(Dispatchers.IO) {
         try {
             val dataObjs = ArrayList<JsonObject>()
             val imageObjs = ArrayList<JsonObject>()
@@ -343,7 +339,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
             repo.observeDiaries().first().forEach { d ->
                 var imgIdx = 0
                 MgxdCodec.diaryImageRefs(d).forEach { (refId, path) ->
-                    val dataUrl = MgxdCodec.encodeImage(path, true)
+                    val dataUrl = MgxdCodec.encodeImage(path, preserveAlpha)
                     if (dataUrl != null) {
                         imgIdx++
                         val mime = dataUrl.substringBefore(";base64").removePrefix("data:")
@@ -373,12 +369,15 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
             val diaries = repo.observeDiaries().first()
             val habits = repo.observeHabits().first()
             val countdowns = repo.observeCountdowns().first()
+            val diaryImages = diaries.sumOf { it.imagePaths.size }
             "待办：" + todos.size + " 条（未完成 " + todos.count { !it.completed } + "）\n" +
                 "日程：" + events.size + " 条\n" +
-                "日记：" + diaries.size + " 篇\n" +
+                "日记：" + diaries.size + " 篇（含图片 " + diaryImages + " 张）\n" +
                 "打卡：" + habits.size + " 个\n" +
                 "倒数日：" + countdowns.size + " 个\n" +
-                "---\n由 Magic Note 局域网同步提供，可下载 .mgxd 备份后在另一台设备导入合并"
+                "---\n" +
+                "备份质量：与「设置 → 数据备份与迁移 → 导出数据」完全一致（全部条目 + 日记原图 Base64 内嵌）\n" +
+                "下载的 .mgxd 可在另一台设备的 Magic Note 里直接导入合并"
         }.getOrDefault("暂无数据")
     }
 
