@@ -86,6 +86,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                 repo.observeDiaries().first().forEach { add(MgxdCodec.Candidate("diary", it.id, "📖 日记 · ${it.title ?: it.content.take(16)}", "${formatTime(it.date)} 图片x${it.imagePaths.size}")) }
                 repo.observeHabits().first().forEach { add(MgxdCodec.Candidate("habit", it.id, "🔥 打卡 · ${it.title}", "累计 ${it.checkInDates.size} 天")) }
                 repo.observeCountdowns().first().forEach { add(MgxdCodec.Candidate("countdown", it.id, "⏳ 倒数日 · ${it.title}", formatTime(it.targetDate))) }
+                repo.observeChats().first().forEach { add(MgxdCodec.Candidate("chat", it.id, "💬 聊天 · " + it.content.take(16), (if (it.role == "user") "我" else "AI") + " · " + formatTime(it.timestamp))) }
             }
         }
         _candidates.value = all
@@ -106,6 +107,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                     val allDiaries = repo.observeDiaries().first()
                     val allHabits = repo.observeHabits().first()
                     val allCountdowns = repo.observeCountdowns().first()
+                    val allChats = repo.observeChats().first()
                     val picked = { cand: MgxdCodec.Candidate -> cand.key in selected }
 
                     val dataObjs = ArrayList<JsonObject>()
@@ -121,6 +123,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                     val selDiaries = allDiaries.filter { picked(MgxdCodec.Candidate("diary", it.id, "", "")) }
                     val selHabits = allHabits.filter { picked(MgxdCodec.Candidate("habit", it.id, "", "")) }
                     val selCountdowns = allCountdowns.filter { picked(MgxdCodec.Candidate("countdown", it.id, "", "")) }
+                    val selChats = allChats.filter { picked(MgxdCodec.Candidate("chat", it.id, "", "")) }
 
                     selTodos.forEach { dataObjs.add(MgxdCodec.todoToExport(it)); done++; progress(0) }
                     selEvents.forEach { dataObjs.add(MgxdCodec.eventToExport(it)); done++; progress(0) }
@@ -146,6 +149,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                     }
                     selHabits.forEach { dataObjs.add(MgxdCodec.habitToExport(it)); done++; progress(0) }
                     selCountdowns.forEach { dataObjs.add(MgxdCodec.countdownToExport(it)); done++; progress(0) }
+                    selChats.forEach { dataObjs.add(MgxdCodec.chatToExport(it)); done++; progress(0) }
 
                     _state.value = TransferState(busy = true, label = "写入文件…", progress = 1f)
                     MgxdCodec.buildFile(dataObjs, imageObjs)
@@ -218,6 +222,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
         repo.observeCountdowns().first().forEach {
             s.add(minuteKey("countdown", it.targetDate.takeIf { t -> t > 0L } ?: it.createdAt))
         }
+        repo.observeChats().first().forEach { s.add(minuteKey("chat", it.timestamp)) }
         return s
     }
 
@@ -251,6 +256,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
             "diary" -> jsonField(o, "createdAt").toLongOrNull() ?: jsonField(o, "date").toLongOrNull()
             "habit" -> jsonField(o, "createdAt").toLongOrNull()
             "countdown" -> jsonField(o, "targetDate").toLongOrNull() ?: jsonField(o, "createdAt").toLongOrNull()
+            "chat" -> jsonField(o, "timestamp").toLongOrNull()
             else -> null
         }
         return minuteKey(type, time)
@@ -262,6 +268,8 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
      * - 有冲突 → 按 policy：KEEP_BOTH 重置 id 复制一份 / OVERWRITE 覆盖 / SKIP 跳过
      */
     fun runImport(context: Context, policy: ConflictPolicy, onDone: (ImportResult) -> Unit) {
+        // 统一用 applicationContext：协程可能比 Activity 长寿，避免持有界面 Context
+        val appContext = context.applicationContext
         viewModelScope.launch {
             val root = pendingImportRoot ?: return@launch
             _state.value = TransferState(busy = true, label = "正在导入…")
@@ -272,7 +280,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                     val imageMap = HashMap<String, JsonObject>()
                     images.forEach { img -> (img["refId"] as? JsonPrimitive)?.content?.let { imageMap[it] = img } }
 
-                    val imageDir = File(context.filesDir, "diary_images").apply { mkdirs() }
+                    val imageDir = File(appContext.filesDir, "diary_images").apply { mkdirs() }
                     importImageDir = imageDir
 
                     // v7.3：重复判定只看「同一天同一分钟」，不再按 id 判重
@@ -298,15 +306,15 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                         when (action) {
                             "skip" -> { skipped++ }
                             "overwrite" -> {
-                                writeEntity(context, type, item, rawId, imageMap, imageDir)
+                                writeEntity(appContext, type, item, rawId, imageMap, imageDir)
                                 overwritten++
                             }
                             "duplicate" -> {
-                                writeEntity(context, type, item, 0L, imageMap, imageDir)
+                                writeEntity(appContext, type, item, 0L, imageMap, imageDir)
                                 duplicated++
                             }
                             else -> {
-                                writeEntity(context, type, item, rawId, imageMap, imageDir)
+                                writeEntity(appContext, type, item, rawId, imageMap, imageDir)
                                 imported++
                             }
                         }
@@ -355,6 +363,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
             }
             repo.observeHabits().first().forEach { dataObjs.add(MgxdCodec.habitToExport(it)) }
             repo.observeCountdowns().first().forEach { dataObjs.add(MgxdCodec.countdownToExport(it)) }
+            repo.observeChats().first().forEach { dataObjs.add(MgxdCodec.chatToExport(it)) }
             MgxdCodec.buildFile(dataObjs, imageObjs)
         } catch (e: Exception) {
             ""
@@ -370,11 +379,13 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
             val habits = repo.observeHabits().first()
             val countdowns = repo.observeCountdowns().first()
             val diaryImages = diaries.sumOf { it.imagePaths.size }
+            val chats = repo.observeChats().first()
             "待办：" + todos.size + " 条（未完成 " + todos.count { !it.completed } + "）\n" +
                 "日程：" + events.size + " 条\n" +
                 "日记：" + diaries.size + " 篇（含图片 " + diaryImages + " 张）\n" +
                 "打卡：" + habits.size + " 个\n" +
                 "倒数日：" + countdowns.size + " 个\n" +
+                "Magic AI 聊天：" + chats.size + " 条消息\n" +
                 "---\n" +
                 "备份质量：与「设置 → 数据备份与迁移 → 导出数据」完全一致（全部条目 + 日记原图 Base64 内嵌）\n" +
                 "下载的 .mgxd 可在另一台设备的 Magic Note 里直接导入合并"
@@ -467,6 +478,14 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                     checkInDates = (item["checkInDates"] as? JsonArray)
                         ?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList(),
                     createdAt = l(item, "createdAt") ?: System.currentTimeMillis()
+                )
+            )
+            "chat" -> repo.insertChatMessage(
+                ChatEntity(
+                    id = id,
+                    role = s(item, "role") ?: return,
+                    content = s(item, "content") ?: return,
+                    timestamp = l(item, "timestamp") ?: System.currentTimeMillis()
                 )
             )
             "countdown" -> repo.insertCountdown(
