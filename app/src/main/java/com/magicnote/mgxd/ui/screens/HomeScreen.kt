@@ -223,7 +223,7 @@ fun HomeScreen(
                 if (todayTodos.isEmpty()) {
                     item { EmptyHint("今天没有待办事项") }
                 } else {
-                    items(todayTodos.take(5)) { todo ->
+                    items(todayTodos.take(5), key = { it.id }) { todo ->
                         CompactTodoRow(todo = todo, onToggle = { todoVm.toggle(context, todo) })
                     }
                     if (todayTodos.size > 5) {
@@ -244,7 +244,7 @@ fun HomeScreen(
                 item {
                     SectionHeader(title = "每日打卡", count = habits.size, onAdd = { onNavigateTo(1) })
                 }
-                items(habits.take(5)) { habit ->
+                items(habits.take(5), key = { it.id }) { habit ->
                     CompactHabitRow(
                         habit = habit,
                         onCheckIn = { todoVm.checkIn(context, habit) }
@@ -257,7 +257,7 @@ fun HomeScreen(
                 item {
                     SectionHeader(title = "倒数日", count = countdowns.size, onAdd = { onNavigateTo(1) })
                 }
-                items(countdowns.take(5)) { countdown ->
+                items(countdowns.take(5), key = { it.id }) { countdown ->
                     CompactCountdownRow(countdown = countdown)
                 }
             }
@@ -270,7 +270,7 @@ fun HomeScreen(
                 if (todayEvents.isEmpty()) {
                     item { EmptyHint("今天没有日程安排") }
                 } else {
-                    items(todayEvents.take(5)) { event ->
+                    items(todayEvents.take(5), key = { it.id }) { event ->
                         CompactEventRow(event = event)
                     }
                 }
