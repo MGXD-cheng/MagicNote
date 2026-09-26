@@ -16,4 +16,12 @@ interface ChatDao {
 
     @Query("DELETE FROM chat_messages")
     suspend fun clearAll()
+
+    /** 删除指定消息（聊天页多选删除） */
+    @Query("DELETE FROM chat_messages WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
+    /** 删除单条消息 */
+    @Query("DELETE FROM chat_messages WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }
