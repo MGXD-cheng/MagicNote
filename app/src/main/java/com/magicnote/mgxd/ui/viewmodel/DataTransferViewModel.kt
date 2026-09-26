@@ -223,7 +223,8 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
         repo.observeCountdowns().first().forEach {
             s.add(minuteKey("countdown", it.targetDate.takeIf { t -> t > 0L } ?: it.createdAt))
         }
-        repo.observeChats().first().forEach { s.add(minuteKey("chat", it.timestamp)) }
+        // 聊天：角色 + 内容 + 分钟（只按分钟会把同一分钟内的 AI 回复误判成重复而丢掉）
+        repo.observeChats().first().forEach { s.add(chatKey(it.role, it.content, it.timestamp)) }
         return s
     }
 
@@ -260,8 +261,18 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
             "chat" -> jsonField(o, "timestamp").toLongOrNull()
             else -> null
         }
+        // 聊天判重必须带角色与内容：同一分钟内的「用户提问 + AI 回复」是两条不同消息
+        if (type == "chat") return chatKey(jsonField(o, "role"), jsonField(o, "content"), time)
         return minuteKey(type, time)
     }
+
+    /**
+     * 聊天判重键：角色 + 内容哈希 + 分钟。
+     * ⚠️ 不能只按分钟判重 —— 用户与 AI 的对话往往密集在同一分钟内，
+     * 否则第一条导入后 AI 回复会被当作重复项直接跳过（表现为「AI 回复没同步过来」）。
+     */
+    private fun chatKey(role: String, content: String, millis: Long?): String =
+        "chat:" + role + ":" + content.hashCode() + ":" + ((millis ?: 0L) / 60_000L)
 
     /**
      * 执行导入。逐条：
@@ -339,13 +350,18 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
      * 组装全量 .mgxd 文本（局域网同步 / 预览导出用；图片保留透明通道）
      * 失败返回空串。
      */
-    suspend fun buildMgxdText(preserveAlpha: Boolean = true): String = withContext(Dispatchers.IO) {
+    suspend fun buildMgxdText(
+        preserveAlpha: Boolean = true,
+        types: Set<String> = ALL_EXPORT_TYPES
+    ): String = withContext(Dispatchers.IO) {
         try {
             val dataObjs = ArrayList<JsonObject>()
             val imageObjs = ArrayList<JsonObject>()
-            repo.observeTodos().first().forEach { dataObjs.add(MgxdCodec.todoToExport(it)) }
-            repo.observeAllEvents().first().forEach { dataObjs.add(MgxdCodec.eventToExport(it)) }
-            repo.observeDiaries().first().forEach { d ->
+            if ("todo" in types) repo.observeTodos().first()
+                .forEach { dataObjs.add(MgxdCodec.todoToExport(it)) }
+            if ("event" in types) repo.observeAllEvents().first()
+                .forEach { dataObjs.add(MgxdCodec.eventToExport(it)) }
+            if ("diary" in types) repo.observeDiaries().first().forEach { d ->
                 var imgIdx = 0
                 MgxdCodec.diaryImageRefs(d).forEach { (refId, path) ->
                     val dataUrl = MgxdCodec.encodeImage(path, preserveAlpha)
@@ -362,9 +378,12 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                 }
                 dataObjs.add(MgxdCodec.diaryToExport(d))
             }
-            repo.observeHabits().first().forEach { dataObjs.add(MgxdCodec.habitToExport(it)) }
-            repo.observeCountdowns().first().forEach { dataObjs.add(MgxdCodec.countdownToExport(it)) }
-            repo.observeChats().first().forEach { dataObjs.add(MgxdCodec.chatToExport(it)) }
+            if ("habit" in types) repo.observeHabits().first()
+                .forEach { dataObjs.add(MgxdCodec.habitToExport(it)) }
+            if ("countdown" in types) repo.observeCountdowns().first()
+                .forEach { dataObjs.add(MgxdCodec.countdownToExport(it)) }
+            if ("chat" in types) repo.observeChats().first()
+                .forEach { dataObjs.add(MgxdCodec.chatToExport(it)) }
             MgxdCodec.buildFile(dataObjs, imageObjs)
         } catch (e: Exception) {
             ""
@@ -504,4 +523,19 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
     private fun l(o: JsonObject, k: String): Long? = (o[k] as? JsonPrimitive)?.content?.toLongOrNull()
     private fun i(o: JsonObject, k: String, def: Int): Int = (o[k] as? JsonPrimitive)?.content?.toIntOrNull() ?: def
     private fun b(o: JsonObject, k: String): Boolean = (o[k] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
+
+    companion object {
+        /** 局域网同步 / 预览导出可选的数据类型（与 .mgxd 的 type 字段一致） */
+        val ALL_EXPORT_TYPES = setOf("todo", "event", "diary", "habit", "countdown", "chat")
+
+        /** 类型 id → 中文名（UI 勾选用） */
+        val TYPE_LABELS = linkedMapOf(
+            "todo" to "待办",
+            "event" to "日程",
+            "diary" to "日记",
+            "habit" to "打卡",
+            "countdown" to "倒数日",
+            "chat" to "聊天记录"
+        )
+    }
 }
