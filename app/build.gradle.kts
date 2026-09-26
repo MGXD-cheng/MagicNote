@@ -48,6 +48,12 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        // 关键：本机构建环境下 zipalign 是 x86-64 二进制（arm64 跑不了），
+        // 若 extractNativeLibs=false，未页对齐的 .so 会导致 native 库加载失败、应用启动闪退。
+        // 开启 legacy packaging 后系统会在安装时解压 .so，不再要求对齐。
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 // Force use of ARM64 binaries for AAPT2 in Proot/ARM64 environment only.
