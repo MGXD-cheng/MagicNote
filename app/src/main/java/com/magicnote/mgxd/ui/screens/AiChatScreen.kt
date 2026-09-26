@@ -1,5 +1,9 @@
 package com.magicnote.mgxd.ui.screens
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,25 +13,33 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,26 +47,62 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.magicnote.mgxd.ui.components.MarkdownText
 import com.magicnote.mgxd.ui.viewmodel.AiViewModel
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiChatScreen(vm: AiViewModel) {
     val messages by vm.messages.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
+    val markdownRender by vm.markdownRender.collectAsStateWithLifecycle()
+    val noteDraft by vm.noteDraft.collectAsStateWithLifecycle()
+    val noteSaved by vm.noteSaved.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // 聊天记录导出（SAF 保存框，无需存储权限）
+    var pendingExport by remember { mutableStateOf("") }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/markdown")
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use {
+                    it.write(pendingExport.toByteArray(Charsets.UTF_8))
+                }
+            }.onSuccess {
+                Toast.makeText(context, "✅ 聊天记录已导出", Toast.LENGTH_LONG).show()
+            }.onFailure {
+                Toast.makeText(context, "导出失败：${it.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     LaunchedEffect(messages.size, loading) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    LaunchedEffect(noteSaved) {
+        noteSaved?.let {
+            Toast.makeText(context, "已保存到日记：$it", Toast.LENGTH_LONG).show()
+            vm.consumeNoteSaved()
         }
     }
 
@@ -74,6 +122,13 @@ fun AiChatScreen(vm: AiViewModel) {
                 },
                 actions = {
                     if (messages.isNotEmpty()) {
+                        IconButton(onClick = {
+                            pendingExport = vm.buildChatExportText()
+                            val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.getDefault()).format(Date())
+                            exportLauncher.launch("MagicAI-chat-$stamp.md")
+                        }) {
+                            Icon(Icons.Default.Download, contentDescription = "导出聊天记录")
+                        }
                         IconButton(onClick = { vm.clearChat() }) {
                             Icon(Icons.Default.Delete, contentDescription = "清空对话")
                         }
@@ -102,6 +157,12 @@ fun AiChatScreen(vm: AiViewModel) {
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline
                         )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "💡 试试说：「把刚才聊的内容整理成笔记」\n我会整理好让你预览，你满意再保存进日记",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             } else {
@@ -117,7 +178,8 @@ fun AiChatScreen(vm: AiViewModel) {
                         ChatBubble(
                             text = msg.content,
                             isUser = msg.role == "user",
-                            timeMillis = msg.timestamp
+                            timeMillis = msg.timestamp,
+                            markdown = markdownRender
                         )
                     }
                     if (loading) {
@@ -179,6 +241,108 @@ fun AiChatScreen(vm: AiViewModel) {
             }
         }
     }
+
+    // ===== AI 笔记预览弹窗：可提要求重新生成，满意后再保存 =====
+    noteDraft?.let { draft ->
+        NotePreviewDialog(
+            draft = draft,
+            markdownRender = markdownRender,
+            onRegenerate = { requirement -> vm.generateNote(context, requirement, regenerate = true) },
+            onSave = { vm.saveNote() },
+            onDismiss = { vm.dismissNoteDraft() }
+        )
+    }
+}
+
+/** AI 笔记预览 / 复核弹窗（保存前可预览、可提要求重新生成） */
+@Composable
+private fun NotePreviewDialog(
+    draft: AiViewModel.NoteDraft,
+    markdownRender: Boolean,
+    onRegenerate: (String) -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var requirement by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { if (!draft.generating) onDismiss() },
+        title = {
+            Text(
+                if (draft.title.isBlank()) "AI 笔记预览"
+                else "AI笔记：" + draft.title
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 430.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (draft.generating) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.height(18.dp).width(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text("正在整理聊天记录…", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                draft.error?.let {
+                    Text(
+                        "⚠️ $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                if (draft.content.isNotBlank()) {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        if (markdownRender) {
+                            MarkdownText(text = draft.content)
+                        } else {
+                            Text(draft.content, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = requirement,
+                    onValueChange = { requirement = it },
+                    label = { Text("对笔记提要求（选填）") },
+                    placeholder = { Text("例：只保留待办 / 再简洁一点 / 语气活泼些") },
+                    minLines = 2,
+                    enabled = !draft.generating,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "不满意可以提要求重新生成，满意后再点「保存到日记」",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        },
+        confirmButton = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    enabled = !draft.generating && draft.content.isNotBlank(),
+                    onClick = onSave,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("保存到日记") }
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    enabled = !draft.generating,
+                    onClick = { onRegenerate(requirement) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (requirement.isBlank()) "重新生成" else "按要求重新生成") }
+                TextButton(
+                    enabled = !draft.generating,
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("取消") }
+            }
+        },
+        dismissButton = {}
+    )
 }
 
 @Composable
@@ -186,7 +350,8 @@ private fun ChatBubble(
     text: String,
     isUser: Boolean,
     showTyping: Boolean = false,
-    timeMillis: Long = 0L
+    timeMillis: Long = 0L,
+    markdown: Boolean = false
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -214,8 +379,8 @@ private fun ChatBubble(
                     )
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
-                if (showTyping) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    showTyping -> Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
                             modifier = Modifier.height(14.dp).width(14.dp),
                             strokeWidth = 2.dp
@@ -223,8 +388,9 @@ private fun ChatBubble(
                         Spacer(Modifier.width(8.dp))
                         Text(text, style = MaterialTheme.typography.bodyMedium)
                     }
-                } else {
-                    Text(
+                    // AI 回复：按设置渲染 Markdown（用户消息保持原样）
+                    !isUser && markdown -> MarkdownText(text = text)
+                    else -> Text(
                         text = text,
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
