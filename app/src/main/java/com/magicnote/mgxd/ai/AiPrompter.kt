@@ -695,6 +695,57 @@ object AiPrompter {
     }
 
     /**
+     * AI 笔记 Prompt：把一段时间的聊天记录整理成一篇日记（存入「日记」）
+     *
+     * 输出要求为 JSON：`{"title":"…","content":"…"}`
+     * - title：概括主题，≤20 字（前缀「AI笔记：」由 App 统一添加，模型不要输出）
+     * - content：Markdown 正文，忠实于聊天记录，禁止编造
+     */
+    fun buildNoteDraftPrompt(
+        personality: Personality,
+        chatText: String,
+        requirement: String? = null,
+        previousTitle: String? = null,
+        previousContent: String? = null
+    ): String = buildString {
+        appendLine("<?xml version='1.0' encoding='UTF-8'?>")
+        appendLine("<ai_note version='1'>")
+        append("  <task>请以「").append(xmlEscape(personality.label)).append("」人格（")
+        append(personality.emoji)
+        appendLine("）的口吻，把下面这段时间的聊天记录整理成一篇可以长期保存的笔记（将存入「日记」）。</task>")
+        appendLine("  <personality>")
+        append("    ").append(xmlEscape(personality.systemPrompt.replace('\n', ' ')))
+        appendLine()
+        appendLine("  </personality>")
+        appendLine("  <rules>")
+        appendLine("    <rule>只提炼聊天记录里真实出现过的信息，严禁编造事实、数字、人名、时间或承诺。</rule>")
+        appendLine("    <rule>如果聊天内容太少或没有值得记录的信息，就如实写一篇简短的记录，不要硬凑。</rule>")
+        appendLine("    <rule>正文用 Markdown 排版：可用 ## 小标题、- 列表、**加粗**；不要用表格与代码块。</rule>")
+        appendLine("    <rule>正文 200~600 字，按主题分段，例如：聊了什么 / 结论与决定 / 待办与下一步 / 情绪与状态；内容少就写短一点。</rule>")
+        appendLine("    <rule>保留关键的人名、时间、地点、待办与结论；把口语整理成通顺的书面表达，但不要改变事实。</rule>")
+        appendLine("    <rule>标题不超过 20 字，概括主题；不要出现「AI 笔记」字样，不要加书名号、引号或标点结尾。</rule>")
+        appendLine("    <rule>严格只输出一个 JSON 对象，形如 {\"title\":\"标题\",\"content\":\"正文\"}，不要输出解释、注释或代码围栏。</rule>")
+        if (!requirement.isNullOrBlank()) {
+            append("    <rule>必须满足用户这次的额外要求：")
+            append(xmlEscape(requirement))
+            appendLine("</rule>")
+        }
+        appendLine("  </rules>")
+        if (!previousContent.isNullOrBlank()) {
+            appendLine("  <previous_draft>")
+            append("    <title>").append(xmlEscape(previousTitle ?: "")).appendLine("</title>")
+            append("    <content>").append(xmlEscape(previousContent)).appendLine("</content>")
+            appendLine("    <instruction>上面是上一版草稿：请在保留合理内容的基础上按用户要求改写，并输出完整的新版（同样是 JSON）。</instruction>")
+            appendLine("  </previous_draft>")
+        }
+        appendLine("  <chat_log>")
+        append(xmlEscape(chatText))
+        appendLine()
+        appendLine("  </chat_log>")
+        appendLine("</ai_note>")
+    }
+
+    /**
      * 日记自动回复：AI 针对用户刚写完的日记生成回复（共情 / 建议 / 鼓励）
      * 固定模板放最前，日记内容放最后（缓存友好）
      */
