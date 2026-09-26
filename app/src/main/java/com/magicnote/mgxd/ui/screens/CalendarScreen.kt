@@ -204,7 +204,7 @@ fun CalendarScreen(
                     )
                 }
             } else {
-                items(selectedEvents, key = { it.id }) { event ->
+                items(selectedEvents, key = { "ev_${it.id}" }) { event ->
                     EventCard(
                         event = event,
                         onClick = { editTarget = event },
