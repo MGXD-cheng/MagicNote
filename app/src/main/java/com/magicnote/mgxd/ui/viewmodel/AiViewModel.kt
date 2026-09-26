@@ -170,6 +170,12 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.clearChats() }
     }
 
+    /** 删除指定的聊天消息（聊天页多选删除） */
+    fun deleteChats(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch { repo.deleteChats(ids) }
+    }
+
 
     // ==================== AI 笔记（聊天记录 → 日记） ====================
 
@@ -179,7 +185,9 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
         val content: String,
         val requirement: String = "",
         val generating: Boolean = false,
-        val error: String? = null
+        val error: String? = null,
+        /** 本次整理的素材范围（重新生成时沿用它，保证改的是同一批聊天） */
+        val sourceIds: List<Long> = emptyList()
     )
 
     private val _noteDraft = MutableStateFlow<NoteDraft?>(null)
@@ -206,15 +214,23 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
      * @param requirement 用户对笔记的额外要求（如「只保留待办」「再简洁一点」）
      * @param regenerate true = 基于当前草稿按新要求改写；false = 首次生成
      */
-    fun generateNote(context: Context, requirement: String = "", regenerate: Boolean = false) {
+    fun generateNote(
+        context: Context,
+        requirement: String = "",
+        regenerate: Boolean = false,
+        sourceIds: List<Long>? = null
+    ) {
         viewModelScope.launch {
             val base = if (regenerate) _noteDraft.value else null
+            // 重新生成时沿用上次选择的素材；首次生成用调用方传入的选择
+            val ids = if (regenerate) (base?.sourceIds ?: sourceIds) else sourceIds
             _noteDraft.value = NoteDraft(
                 title = base?.title ?: "",
                 content = base?.content ?: "",
                 requirement = requirement,
                 generating = true,
-                error = null
+                error = null,
+                sourceIds = ids ?: emptyList()
             )
             try {
                 val config = repo.aiConfig.collectFirst()
@@ -224,18 +240,20 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
                         content = base?.content ?: "",
                         requirement = requirement,
                         generating = false,
-                        error = "还没配置 API Key，请先到「设置」页填写"
+                        error = "还没配置 API Key，请先到「设置」页填写",
+                        sourceIds = ids ?: emptyList()
                     )
                     return@launch
                 }
-                val source = buildNoteSource()
+                val source = buildNoteSource(ids ?: emptyList())
                 if (source.isBlank()) {
                     _noteDraft.value = NoteDraft(
                         title = base?.title ?: "",
                         content = base?.content ?: "",
                         requirement = requirement,
                         generating = false,
-                        error = "最近没有可整理的聊天记录"
+                        error = "没有可整理的聊天记录，请先勾选要整理的条目",
+                        sourceIds = ids ?: emptyList()
                     )
                     return@launch
                 }
@@ -262,7 +280,8 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
                         content = base?.content ?: "",
                         requirement = requirement,
                         generating = false,
-                        error = "生成失败或超时，可以补充更明确的要求后再试一次"
+                        error = "生成失败或超时，可以补充更明确的要求后再试一次",
+                        sourceIds = ids ?: emptyList()
                     )
                 } else {
                     _noteDraft.value = NoteDraft(
@@ -281,7 +300,8 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
                     content = base?.content ?: "",
                     requirement = requirement,
                     generating = false,
-                    error = "生成出错：" + (e.message ?: "未知错误")
+                    error = "生成出错：" + (e.message ?: "未知错误"),
+                    sourceIds = ids ?: emptyList()
                 )
             }
         }
@@ -327,9 +347,15 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
         }
     }
 
-    /** 取最近一段聊天记录作为笔记素材（最近 60 条 / 最多 16000 字符） */
-    private fun buildNoteSource(): String {
-        val list = _messages.value.takeLast(60)
+    /**
+     * 取笔记素材（最多 16000 字符）
+     *
+     * @param ids 指定要整理的聊天条目（聊天页「整理成笔记」按钮勾选的就是这些）；
+     *            为空则退回最近 60 条
+     */
+    private fun buildNoteSource(ids: List<Long> = emptyList()): String {
+        val list = if (ids.isEmpty()) _messages.value.takeLast(60)
+        else _messages.value.filter { it.id in ids }.sortedBy { it.timestamp }
         if (list.isEmpty()) return ""
         val sb = StringBuilder()
         for (m in list) {
