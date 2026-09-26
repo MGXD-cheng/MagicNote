@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.magicnote.mgxd.data.db.CalendarEventEntity
+import com.magicnote.mgxd.data.db.ChatEntity
 import com.magicnote.mgxd.data.db.CountdownEntity
 import com.magicnote.mgxd.data.db.DiaryEntity
 import com.magicnote.mgxd.data.db.HabitEntity
