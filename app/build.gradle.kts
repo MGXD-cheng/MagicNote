@@ -25,8 +25,9 @@ android {
     buildTypes {
         release {
             // R8 全量优化（AGP 8.0+ 默认 full mode）：dead code 消除 + Compose lambda 分组优化 + 启动 AOT 加速
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // 稳定优先：暂时关闭 R8 混淆（定位启动闪退后再逐步开启优化）
+            isMinifyEnabled = false
+            isShrinkResources = false
             // 独立开发者本地发行：用 debug keystore 签名（正式上架时换成正式签名）
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
