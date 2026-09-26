@@ -33,7 +33,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -80,6 +83,9 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
     var busy by remember { mutableStateOf(false) }
     var busyLabel by remember { mutableStateOf("处理中…") }
     var busyProgress by remember { mutableStateOf<Float?>(null) }
+
+    // 局域网同步：可选择要同步的内容（默认全选）
+    var lanTypes by remember { mutableStateOf(DataTransferViewModel.ALL_EXPORT_TYPES) }
 
     // 文件保存（SAF，无需存储权限）
     val exportLauncher = rememberLauncherForActivityResult(
@@ -182,10 +188,41 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
         HorizontalDivider()
         Text("局域网同步（两台设备互传）", style = MaterialTheme.typography.titleMedium)
         Text(
-            "两台设备连同一 Wi-Fi：A 开启服务后，B 用浏览器打开该地址即可：① 下载 Magic Note 安装包（APK）② 预览数据 ③ 下载完整 .mgxd 备份（与「导出数据」质量完全一致，含全部图片）；也可在下方填入 A 的地址一键合并数据",
+            "两台设备连同一 Wi-Fi：A 开启服务后，B 用浏览器打开该地址即可：① 下载 Magic Note 安装包（APK）② 预览数据 ③ 下载 .mgxd 备份；也可在下方填入 A 的地址一键合并数据",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.outline
         )
+        // ===== 可选同步内容 =====
+        Text(
+            "要同步的内容（默认全选）",
+            style = MaterialTheme.typography.labelLarge
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            DataTransferViewModel.TYPE_LABELS.forEach { (type, label) ->
+                FilterChip(
+                    selected = type in lanTypes,
+                    onClick = {
+                        lanTypes = if (type in lanTypes) lanTypes - type else lanTypes + type
+                    },
+                    label = { Text(label) }
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { lanTypes = DataTransferViewModel.ALL_EXPORT_TYPES }) { Text("全选") }
+            TextButton(onClick = { lanTypes = emptySet() }) { Text("全不选") }
+            Text(
+                if (lanTypes.isEmpty()) "⚠️ 未选择任何内容" else "将同步 " + lanTypes.size + " 类数据",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (lanTypes.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+        }
         val lanUrl by vm.lanUrl.collectAsStateWithLifecycle()
         val lanDownloading by vm.lanDownloading.collectAsStateWithLifecycle()
         val lanError by vm.lanError.collectAsStateWithLifecycle()
@@ -200,7 +237,7 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
             OutlinedButton(
                 onClick = {
                     vm.startLanSync(
-                        exportProvider = { dataVm.buildMgxdText() },
+                        exportProvider = { dataVm.buildMgxdText(true, lanTypes) },
                         summaryProvider = { dataVm.summaryText() }, apkProvider = { buildLocalApk(context) }
                     )
                 },
@@ -216,6 +253,11 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
                 "在电脑 / 另一台手机浏览器打开上面的地址：可预览数据概览，并可下载 .mgxd 备份文件",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
+            )
+            Text(
+                "当前同步内容：" + lanTypes.joinToString(" / ") { DataTransferViewModel.TYPE_LABELS[it] ?: it },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
