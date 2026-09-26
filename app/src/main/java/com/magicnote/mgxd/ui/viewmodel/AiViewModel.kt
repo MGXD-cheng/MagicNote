@@ -8,6 +8,7 @@ import com.magicnote.mgxd.ai.AiPrompter
 import com.magicnote.mgxd.ai.Personality
 import com.magicnote.mgxd.data.db.CalendarEventEntity
 import com.magicnote.mgxd.data.db.CountdownEntity
+import com.magicnote.mgxd.data.db.DiaryEntity
 import com.magicnote.mgxd.data.db.HabitEntity
 import com.magicnote.mgxd.data.db.TodoEntity
 import com.magicnote.mgxd.data.prefs.UserPrefs
@@ -61,6 +62,10 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
                 _messages.value = list.map { ChatItem(it.role, it.content, it.timestamp) }
             }
         }
+        // Markdown 渲染开关
+        viewModelScope.launch {
+            repo.markdownRender.collect { _markdownRender.value = it }
+        }
     }
 
     fun sendMessage(context: Context, text: String) {
@@ -88,6 +93,13 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
                 val allDiaries = repo.observeDiaries().collectFirst()
                 val cmdTodos = if (moduleCfg.todoEnabled) allTodos else emptyList()
                 val cmdEvents = if (moduleCfg.calendarEnabled) allEvents else emptyList()
+
+                // 功能：把一段聊天记录整理成笔记 → 存入日记（先弹窗预览，确认后才保存）
+                if (looksLikeNoteRequest(text)) {
+                    repo.insertChat("assistant", "📝 好的，我正把最近这段聊天整理成一篇笔记，稍等一下…")
+                    generateNote(context, requirement = "")
+                    return@launch
+                }
 
                 // 功能 E：先尝试把输入解析为「日程/待办增删改」指令，命中则直接执行并回复，不再走普通聊天
                 if (looksLikeCommand(text) && tryExecuteCommand(context, text, config, cmdTodos, cmdEvents, moduleCfg)) {
@@ -145,6 +157,227 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
 
     fun clearChat() {
         viewModelScope.launch { repo.clearChats() }
+    }
+
+    // ==================== Magic AI 输出自动渲染 Markdown ====================
+
+    /** AI 回复是否按 Markdown 渲染（设置页可开关，默认开） */
+    private val _markdownRender = MutableStateFlow(true)
+    val markdownRender: StateFlow<Boolean> = _markdownRender.asStateFlow()
+
+    // ==================== AI 笔记（聊天记录 → 日记） ====================
+
+    /** 笔记草稿（预览弹窗展示 / 可要求重新生成） */
+    data class NoteDraft(
+        val title: String,
+        val content: String,
+        val requirement: String = "",
+        val generating: Boolean = false,
+        val error: String? = null
+    )
+
+    private val _noteDraft = MutableStateFlow<NoteDraft?>(null)
+    val noteDraft: StateFlow<NoteDraft?> = _noteDraft.asStateFlow()
+
+    /** 笔记保存成功事件（单发提示，UI 读取后清空） */
+    private val _noteSaved = MutableStateFlow<String?>(null)
+    val noteSaved: StateFlow<String?> = _noteSaved.asStateFlow()
+
+    /** 本地预判：这条消息是否在要求「把聊天记录整理成笔记」 */
+    fun looksLikeNoteRequest(text: String): Boolean {
+        val t = text.trim()
+        if (t.isEmpty() || t.length > 200) return false
+        val hasAction = listOf("整理", "总结", "归纳", "汇总", "提炼", "生成", "写成", "做成", "记录成", "复盘")
+            .any { t.contains(it) }
+        val hasTarget = listOf("笔记", "日记", "要点", "重点", "摘要").any { t.contains(it) }
+        val hasSource = listOf("聊天", "对话", "记录", "刚才", "前面", "这段时间", "今天聊", "我们聊").any { t.contains(it) }
+        return hasAction && hasTarget && hasSource
+    }
+
+    /**
+     * 生成 / 重新生成笔记草稿（结果写入 [noteDraft]，由 UI 弹窗预览）
+     *
+     * @param requirement 用户对笔记的额外要求（如「只保留待办」「再简洁一点」）
+     * @param regenerate true = 基于当前草稿按新要求改写；false = 首次生成
+     */
+    fun generateNote(context: Context, requirement: String = "", regenerate: Boolean = false) {
+        viewModelScope.launch {
+            val base = if (regenerate) _noteDraft.value else null
+            _noteDraft.value = NoteDraft(
+                title = base?.title ?: "",
+                content = base?.content ?: "",
+                requirement = requirement,
+                generating = true,
+                error = null
+            )
+            try {
+                val config = repo.aiConfig.collectFirst()
+                if (config.apiKey.isBlank()) {
+                    _noteDraft.value = NoteDraft(
+                        title = base?.title ?: "",
+                        content = base?.content ?: "",
+                        requirement = requirement,
+                        generating = false,
+                        error = "还没配置 API Key，请先到「设置」页填写"
+                    )
+                    return@launch
+                }
+                val source = buildNoteSource()
+                if (source.isBlank()) {
+                    _noteDraft.value = NoteDraft(
+                        title = base?.title ?: "",
+                        content = base?.content ?: "",
+                        requirement = requirement,
+                        generating = false,
+                        error = "最近没有可整理的聊天记录"
+                    )
+                    return@launch
+                }
+                val personality = Personality.fromId(config.personalityId)
+                val prompt = AiPrompter.buildNoteDraftPrompt(
+                    personality = personality,
+                    chatText = source,
+                    requirement = requirement.takeIf { it.isNotBlank() },
+                    previousTitle = base?.title,
+                    previousContent = base?.content
+                )
+                val reply = withTimeoutOrNull(90_000) {
+                    client.chat(
+                        baseUrl = config.baseUrl,
+                        apiKey = config.apiKey,
+                        model = config.model,
+                        messages = listOf(AiClient.ChatMessage("user", prompt))
+                    )
+                }
+                val parsed = reply?.let { parseNoteJson(it) }
+                if (parsed == null) {
+                    _noteDraft.value = NoteDraft(
+                        title = base?.title ?: "",
+                        content = base?.content ?: "",
+                        requirement = requirement,
+                        generating = false,
+                        error = "生成失败或超时，可以补充更明确的要求后再试一次"
+                    )
+                } else {
+                    _noteDraft.value = NoteDraft(
+                        title = parsed.first,
+                        content = parsed.second,
+                        requirement = requirement,
+                        generating = false,
+                        error = null
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _noteDraft.value = NoteDraft(
+                    title = base?.title ?: "",
+                    content = base?.content ?: "",
+                    requirement = requirement,
+                    generating = false,
+                    error = "生成出错：" + (e.message ?: "未知错误")
+                )
+            }
+        }
+    }
+
+    /** 保存笔记到日记（标题统一加「AI笔记：」前缀） */
+    fun saveNote() {
+        val draft = _noteDraft.value ?: return
+        val content = draft.content.trim()
+        if (content.isBlank()) return
+        val title = withNotePrefix(draft.title.trim().ifBlank { "聊天记录整理" })
+        viewModelScope.launch {
+            val dayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
+                .toInstant().toEpochMilli()
+            repo.insertDiary(
+                DiaryEntity(
+                    date = dayStart,
+                    title = title,
+                    content = content,
+                    mood = 2
+                )
+            )
+            _noteDraft.value = null
+            _noteSaved.value = title
+            repo.insertChat(
+                "assistant",
+                "✅ 已保存到日记：「" + title + "」\n打开「日记」页就能看到，也可以继续让我修改。"
+            )
+        }
+    }
+
+    fun dismissNoteDraft() { _noteDraft.value = null }
+
+    fun consumeNoteSaved() { _noteSaved.value = null }
+
+    /** 标题加「AI笔记：」前缀（已带前缀则不重复添加） */
+    private fun withNotePrefix(raw: String): String {
+        val t = raw.trim().trim('「', '」', '“', '”', '"', '\'')
+        return when {
+            t.startsWith(NOTE_PREFIX) -> t
+            t.startsWith("AI笔记") || t.startsWith("AI 笔记") -> t
+            else -> NOTE_PREFIX + t
+        }
+    }
+
+    /** 取最近一段聊天记录作为笔记素材（最近 60 条 / 最多 16000 字符） */
+    private fun buildNoteSource(): String {
+        val list = _messages.value.takeLast(60)
+        if (list.isEmpty()) return ""
+        val sb = StringBuilder()
+        for (m in list) {
+            val who = if (m.role == "user") "我" else "AI"
+            sb.append(who).append('：').append(m.content.trim().replace('\n', ' ')).append('\n')
+        }
+        var text = sb.toString()
+        if (text.length > 16_000) text = text.takeLast(16_000)
+        return text
+    }
+
+    /** 解析模型返回的笔记 JSON（容错：围栏、多余文字、退化为纯文本） */
+    private fun parseNoteJson(raw: String): Pair<String, String>? {
+        val cleaned = raw.trim()
+            .removePrefix("```json").removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        val start = cleaned.indexOf('{')
+        val end = cleaned.lastIndexOf('}')
+        if (start >= 0 && end > start) {
+            try {
+                val obj = cmdJson.parseToJsonElement(cleaned.substring(start, end + 1)).jsonObject
+                val title = obj.str("title")?.trim().orEmpty()
+                val content = obj.str("content")?.trim().orEmpty()
+                if (content.isNotBlank()) {
+                    return title.ifBlank { "聊天记录整理" } to content
+                }
+            } catch (e: Exception) {
+                // 落到纯文本兜底
+            }
+        }
+        val fallback = cleaned.replace("```", "").trim()
+        if (fallback.isBlank()) return null
+        val firstLine = fallback.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+        val title = firstLine.removePrefix("#").trim().take(20).ifBlank { "聊天记录整理" }
+        return title to fallback
+    }
+
+    /** 导出当前聊天记录为 Markdown 文本 */
+    fun buildChatExportText(): String {
+        val list = _messages.value
+        val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+        val sb = StringBuilder()
+        sb.append("# Magic AI 聊天记录\n\n")
+        sb.append("- 导出时间：").append(LocalDateTime.now().format(fmt)).append('\n')
+        sb.append("- 共 ").append(list.size).append(" 条消息\n\n---\n\n")
+        list.forEach { m ->
+            val who = if (m.role == "user") "🧑 我" else "🤖 Magic AI"
+            val at = java.time.Instant.ofEpochMilli(m.timestamp)
+                .atZone(ZoneId.systemDefault()).format(fmt)
+            sb.append("### ").append(who).append(" · ").append(at).append("\n\n")
+            sb.append(m.content.trim()).append("\n\n")
+        }
+        return sb.toString()
     }
 
     /** 采集今日屏幕时间摘要（未授权或异常返回 null，AI 上下文标记为无数据） */
@@ -530,6 +763,9 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
     companion object {
         /** AI 创建来源标记（列表页显示「由 magic ai 创建」） */
         const val SOURCE_AI = "magic_ai"
+
+        /** AI 笔记标题前缀（保存到日记时统一添加） */
+        const val NOTE_PREFIX = "AI笔记："
 
         /** 指令关键词（本地预过滤，命中才调 AI 解析） */
         private val COMMAND_KEYWORDS = listOf(
