@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import com.magicnote.mgxd.data.db.CalendarEventEntity
+import com.magicnote.mgxd.data.db.ChatEntity
 import com.magicnote.mgxd.data.db.CountdownEntity
 import com.magicnote.mgxd.data.db.DiaryEntity
 import com.magicnote.mgxd.data.db.HabitEntity
@@ -104,6 +105,15 @@ object MgxdCodec {
             }
         }
         put("imagePaths", refs)
+    }
+
+    /** Magic AI 聊天消息 → data 条目（type=chat，可导入回来） */
+    fun chatToExport(c: ChatEntity): JsonObject = buildJsonObject {
+        put("type", "chat")
+        put("id", c.id)
+        put("role", c.role)
+        put("content", c.content)
+        put("timestamp", c.timestamp)
     }
 
     fun habitToExport(h: HabitEntity): JsonObject = buildJsonObject {
