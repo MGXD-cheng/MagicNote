@@ -58,6 +58,12 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
+    // ==================== Magic AI 输出自动渲染 Markdown ====================
+
+    /** AI 回复是否按 Markdown 渲染（设置页可开关，默认开） */
+    private val _markdownRender = MutableStateFlow(true)
+    val markdownRender: StateFlow<Boolean> = _markdownRender.asStateFlow()
+
     private val client = AiClient()
 
     init {
@@ -164,11 +170,6 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.clearChats() }
     }
 
-    // ==================== Magic AI 输出自动渲染 Markdown ====================
-
-    /** AI 回复是否按 Markdown 渲染（设置页可开关，默认开） */
-    private val _markdownRender = MutableStateFlow(true)
-    val markdownRender: StateFlow<Boolean> = _markdownRender.asStateFlow()
 
     // ==================== AI 笔记（聊天记录 → 日记） ====================
 
