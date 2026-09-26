@@ -3,6 +3,7 @@ package com.magicnote.mgxd.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import com.magicnote.mgxd.util.DiaryLock
@@ -73,6 +74,8 @@ import com.magicnote.mgxd.ui.components.EmptyState
 import com.magicnote.mgxd.ui.components.MOODS
 import com.magicnote.mgxd.ui.components.MoodSelector
 import com.magicnote.mgxd.ui.viewmodel.DiaryViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -230,12 +233,8 @@ private fun DiaryEntryRow(
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     diary.imagePaths.take(4).forEachIndexed { idx, path ->
-                        val bmp = remember(path) {
-                            runCatching {
-                                val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
-                                android.graphics.BitmapFactory.decodeFile(path, opts)
-                            }.getOrNull()
-                        }
+                        // 异步解码 + LruCache：避免滚动时主线程解码卡顿
+                        val bmp = rememberBitmapAsync(path, sampleSize = 4)
                         if (bmp != null) {
                             Image(
                                 bitmap = bmp.asImageBitmap(),
@@ -270,9 +269,8 @@ private fun DiaryEntryRow(
                 modifier = Modifier.fillMaxSize().background(Color.Black),
                 contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
-                val fullBitmap = remember(currentPath) {
-                    runCatching { android.graphics.BitmapFactory.decodeFile(currentPath) }.getOrNull()
-                }
+                // 异步 + 采样解码（长边 ≤ 2048），避免大图卡顿 / OOM
+                val fullBitmap = rememberBitmapAsync(currentPath, full = true)
                 if (fullBitmap != null) {
                     Image(
                         bitmap = fullBitmap.asImageBitmap(),
@@ -427,12 +425,7 @@ fun EditDiaryDialog(
 /** 本地图片缩略图（64dp 方形，点击移除） */
 @Composable
 private fun DiaryThumb(path: String, onClick: () -> Unit) {
-    val bitmap = remember(path) {
-        runCatching {
-            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
-            android.graphics.BitmapFactory.decodeFile(path, opts)
-        }.getOrNull()
-    }
+    val bitmap = rememberBitmapAsync(path, sampleSize = 2)
     if (bitmap != null) {
         Box(
             modifier = Modifier
@@ -605,4 +598,75 @@ private fun DiaryLockScreen(
             }
         }
     }
+}
+
+
+// ==================== 图片异步解码（避免主线程解码造成掉帧） ====================
+
+/** 日记图片内存缓存：滚动列表不重复解码，上限约堆内存的 1/12 */
+private object DiaryBitmapCache {
+    private val cache = object : android.util.LruCache<String, android.graphics.Bitmap>(
+        (Runtime.getRuntime().maxMemory() / 1024L / 12L).toInt()
+    ) {
+        override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.byteCount / 1024
+    }
+    fun get(key: String): android.graphics.Bitmap? = cache.get(key)
+    fun put(key: String, bmp: android.graphics.Bitmap) { cache.put(key, bmp) }
+}
+
+/** 在 IO 线程按目标长边采样解码（必须在后台线程调用） */
+private fun decodeSampled(path: String, reqLongSide: Int, sampleHint: Int = 1): android.graphics.Bitmap? = try {
+    if (sampleHint > 1) {
+        android.graphics.BitmapFactory.decodeFile(
+            path,
+            android.graphics.BitmapFactory.Options().apply { inSampleSize = sampleHint }
+        )
+    } else {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            null
+        } else {
+            var sample = 1
+            val longSide = maxOf(bounds.outWidth, bounds.outHeight)
+            while (longSide / sample > reqLongSide) sample *= 2
+            android.graphics.BitmapFactory.decodeFile(
+                path,
+                android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+            )
+        }
+    }
+} catch (e: Exception) {
+    null
+}
+
+/**
+ * 异步加载图片（IO 线程 + LruCache），避免在 Composition 阶段同步解码导致掉帧 / ANR
+ * @param sampleSize 缩略图采样倍数（>1 走缓存）
+ * @param full 大图模式：长边 ≤2048 采样，不缓存（避免占满内存）
+ */
+@Composable
+private fun rememberBitmapAsync(path: String?, sampleSize: Int = 4, full: Boolean = false): android.graphics.Bitmap? {
+    if (path == null) return null
+    val cacheKey = if (full) null else "s$sampleSize:$path"
+    val bmp by produceState<android.graphics.Bitmap?>(
+        initialValue = cacheKey?.let { DiaryBitmapCache.get(it) },
+        key1 = path,
+        key2 = sampleSize,
+        key3 = full
+    ) {
+        val cached = cacheKey?.let { DiaryBitmapCache.get(it) }
+        if (cached != null) {
+            value = cached
+            return@produceState
+        }
+        val loaded = withContext(Dispatchers.IO) {
+            if (full) decodeSampled(path, 2048) else decodeSampled(path, 512, sampleHint = sampleSize)
+        }
+        if (loaded != null) {
+            if (cacheKey != null) DiaryBitmapCache.put(cacheKey, loaded)
+            value = loaded
+        }
+    }
+    return bmp
 }
