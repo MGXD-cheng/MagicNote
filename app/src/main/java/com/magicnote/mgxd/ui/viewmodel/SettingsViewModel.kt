@@ -59,6 +59,10 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
     private val _modelVision = MutableStateFlow(false)
     val modelVision: StateFlow<Boolean> = _modelVision.asStateFlow()
 
+    /** Magic AI 输出自动渲染 Markdown */
+    private val _markdownRender = MutableStateFlow(true)
+    val markdownRender: StateFlow<Boolean> = _markdownRender.asStateFlow()
+
     private val _themeMode = MutableStateFlow("system")
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
@@ -117,6 +121,7 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.moduleConfig.collect { _moduleConfig.value = it } }
         viewModelScope.launch { repo.diaryAutoReply.collect { _diaryAutoReply.value = it } }
         viewModelScope.launch { repo.modelVision.collect { _modelVision.value = it } }
+        viewModelScope.launch { repo.markdownRender.collect { _markdownRender.value = it } }
         viewModelScope.launch { repo.themeMode.collect { _themeMode.value = it } }
     }
 
@@ -220,6 +225,13 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
             repo.saveModelVision(enabled)
         }
     }
+
+    /** Magic AI 输出自动渲染 Markdown 开关 */
+    fun saveMarkdownRender(enabled: Boolean) {
+        viewModelScope.launch {
+            repo.saveMarkdownRender(enabled)
+        }
+    }
     /** 外观主题：system=跟随系统 / light=浅色 / dark=深色 */
     fun setThemeMode(mode: String) {
         viewModelScope.launch { repo.saveThemeMode(mode) }
@@ -305,9 +317,17 @@ class SettingsViewModel(private val repo: AppRepository) : ViewModel() {
     fun clearUpdateError() { _updateError.value = null }
 
     // ==================== 局域网同步 ====================
-    fun startLanSync(exportProvider: suspend () -> String, summaryProvider: suspend () -> String) {
+    fun startLanSync(
+        exportProvider: suspend () -> String,
+        summaryProvider: suspend () -> String,
+        apkProvider: (() -> com.magicnote.mgxd.lan.LanApk?)? = null
+    ) {
         if (lanServer?.isRunning == true) return
-        val server = LanSyncServer(exportProvider = exportProvider, summaryProvider = summaryProvider)
+        val server = LanSyncServer(
+            exportProvider = exportProvider,
+            summaryProvider = summaryProvider,
+            apkProvider = apkProvider
+        )
         server.start()
             .onSuccess { url -> lanServer = server; _lanUrl.value = url }
             .onFailure { e -> _lanError.value = "局域网服务启动失败：" + (e.message ?: "端口被占用") }
