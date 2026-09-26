@@ -18,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -34,6 +35,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** 桌面小组件点击时带过来的目标 tab（0 今日 / 1 待办 / 2 日历 / 3 日记 / 4 AI / 5 设置） */
+    private val pendingTab = mutableStateOf<Int?>(null)
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 用户选择后无需额外处理 */ }
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,6 +49,8 @@ class MainActivity : ComponentActivity() {
         scheduleReminders()
         // 从文件管理器 / 浏览器打开 .mgxd 备份文件时直接进入导入流程
         handleViewIntent(intent)
+        // 小组件点击：直接落到对应 tab
+        pendingTab.value = intent?.getIntExtra(EXTRA_TAB, -1)?.takeIf { it >= 0 }
         // 打开 App 时刷新桌面小组件（数据可能在别处发生变化）
         com.magicnote.mgxd.widget.TodoWidgetProvider.refreshAll(this)
         com.magicnote.mgxd.widget.CountdownWidgetProvider.refreshAll(this)
@@ -71,7 +77,7 @@ class MainActivity : ComponentActivity() {
                     onDispose { }
                 }
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    AppNav()
+                    AppNav(initialTab = pendingTab.value)
                 }
             }
         }
@@ -101,6 +107,13 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleViewIntent(intent)
+        // App 已在后台时点小组件：同样切到目标 tab
+        pendingTab.value = intent.getIntExtra(EXTRA_TAB, -1).takeIf { it >= 0 }
+    }
+
+    companion object {
+        /** 小组件 / 通知里用来指定打开哪个 tab */
+        const val EXTRA_TAB = "extra_open_tab"
     }
 
     private fun requestNotificationPermissionIfNeeded() {
