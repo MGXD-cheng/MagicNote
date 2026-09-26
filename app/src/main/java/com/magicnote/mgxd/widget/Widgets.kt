@@ -27,11 +27,16 @@ private fun repoOf(context: Context): AppRepository =
 private fun pendingFlags(): Int =
     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
-private fun openAppPendingIntent(context: Context): PendingIntent {
+/**
+ * 打开 App 并直接落到指定 tab（0 今日 / 1 待办 / 2 日历 / 3 日记 / 4 Magic AI / 5 设置）
+ * 不同 tab 用不同 requestCode，避免 PendingIntent 互相覆盖。
+ */
+private fun openAppPendingIntent(context: Context, tab: Int = 0): PendingIntent {
     val intent = Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        putExtra(MainActivity.EXTRA_TAB, tab)
     }
-    return PendingIntent.getActivity(context, 0, intent, pendingFlags())
+    return PendingIntent.getActivity(context, 1000 + tab, intent, pendingFlags())
 }
 
 // ============================================================
@@ -85,15 +90,18 @@ class TodoWidgetProvider : AppWidgetProvider() {
                         .filter { !it.isLongTerm && !it.completed }
                         .sortedWith(compareBy({ it.dueTime ?: Long.MAX_VALUE }, { -it.priority }))
                     val shown = pending.take(3)
+                    val openTodoTab = openAppPendingIntent(context, 1)   // 直接进待办页
+                    val openHomeTab = openAppPendingIntent(context, 0)
 
                     views.setTextViewText(
                         R.id.widget_todo_count,
-                        if (pending.isEmpty()) "" else pending.size.toString() + " 项"
+                        if (pending.isEmpty()) "" else pending.size.toString() + " 项待办"
                     )
                     views.setViewVisibility(
                         R.id.widget_todo_empty,
                         if (shown.isEmpty()) View.VISIBLE else View.GONE
                     )
+                    views.setTextViewText(R.id.widget_todo_empty, "今天没有待办，点这里加一条 ✨")
 
                     val rows = listOf(
                         Triple(R.id.widget_todo_row1, R.id.widget_todo_text1, R.id.widget_todo_check1),
@@ -107,15 +115,16 @@ class TodoWidgetProvider : AppWidgetProvider() {
                         } else {
                             views.setViewVisibility(rowId, View.VISIBLE)
                             views.setTextViewText(textId, todo.title)
+                            // 圆圈 → 直接完成；标题/行 → 进待办页（避免想看详情时误触完成）
                             val toggle = toggleIntent(context, todo.id)
                             views.setOnClickPendingIntent(checkId, toggle)
-                            views.setOnClickPendingIntent(rowId, toggle)
+                            views.setOnClickPendingIntent(textId, openTodoTab)
+                            views.setOnClickPendingIntent(rowId, openTodoTab)
                         }
                     }
 
-                    val open = openAppPendingIntent(context)
-                    views.setOnClickPendingIntent(R.id.widget_todo_title, open)
-                    views.setOnClickPendingIntent(R.id.widget_todo_footer, open)
+                    views.setOnClickPendingIntent(R.id.widget_todo_title, openTodoTab)
+                    views.setOnClickPendingIntent(R.id.widget_todo_footer, openHomeTab)
                 } catch (_: Exception) {
                 }
                 mgr.updateAppWidget(widgetId, views)
@@ -174,11 +183,19 @@ class CountdownWidgetProvider : AppWidgetProvider() {
                             views.setViewVisibility(rowId, View.VISIBLE)
                             views.setTextViewText(nameId, item.title)
                             views.setTextViewText(daysId, daysText(item.daysLeft))
+                            // 紧急度配色：已过/今天 → 红，7 天内 → 橙，更远 → 紫
+                            val dayColor = when {
+                                item.daysLeft <= 0L -> 0xFFFF5252.toInt()
+                                item.daysLeft <= 7L -> 0xFFFFA726.toInt()
+                                else -> 0xFF9C6BFF.toInt()
+                            }
+                            views.setTextColor(daysId, dayColor)
                         }
                     }
-                    val open = openAppPendingIntent(context)
-                    views.setOnClickPendingIntent(R.id.widget_cd_title, open)
-                    views.setOnClickPendingIntent(R.id.widget_cd_root, open)
+                    // 倒数日在「待办」页，直接跳过去
+                    val openCountdown = openAppPendingIntent(context, 1)
+                    views.setOnClickPendingIntent(R.id.widget_cd_title, openCountdown)
+                    views.setOnClickPendingIntent(R.id.widget_cd_root, openCountdown)
                 } catch (_: Exception) {
                 }
                 mgr.updateAppWidget(widgetId, views)
