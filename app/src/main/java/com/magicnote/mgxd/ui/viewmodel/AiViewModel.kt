@@ -26,9 +26,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import com.magicnote.mgxd.util.MgxdCodec
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -44,7 +47,9 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
     data class ChatItem(
         val role: String,          // user / assistant
         val content: String,
-        val timestamp: Long = System.currentTimeMillis()
+        val timestamp: Long = System.currentTimeMillis(),
+        /** Room 主键：列表 key 与按范围导出用（避免时间戳重复导致 Lazy key 冲突） */
+        val id: Long = 0L
     )
 
     private val _messages = MutableStateFlow<List<ChatItem>>(emptyList())
@@ -59,7 +64,7 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
         // 聊天历史持久化：Room 流驱动 UI，重启后自动恢复
         viewModelScope.launch {
             repo.observeChats().collect { list ->
-                _messages.value = list.map { ChatItem(it.role, it.content, it.timestamp) }
+                _messages.value = list.map { ChatItem(it.role, it.content, it.timestamp, it.id) }
             }
         }
         // Markdown 渲染开关
@@ -363,8 +368,8 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
     }
 
     /** 导出当前聊天记录为 Markdown 文本 */
-    fun buildChatExportText(): String {
-        val list = _messages.value
+    fun buildChatExportText(selected: List<ChatItem>? = null): String {
+        val list = selected ?: _messages.value
         val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
         val sb = StringBuilder()
         sb.append("# Magic AI 聊天记录\n\n")
@@ -378,6 +383,24 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
             sb.append(m.content.trim()).append("\n\n")
         }
         return sb.toString()
+    }
+
+    /**
+     * 导出聊天记录为 .mgxd（可在「数据备份与迁移 → 导入备份」中导回来）
+     * @param selected 选中的消息；null 表示全部
+     */
+    fun buildChatExportMgxd(selected: List<ChatItem>? = null): String {
+        val list = selected ?: _messages.value
+        val data = list.mapIndexed { index, m ->
+            kotlinx.serialization.json.buildJsonObject {
+                put("type", "chat")
+                put("id", m.id.takeIf { it > 0L } ?: (index + 1).toLong())
+                put("role", m.role)
+                put("content", m.content)
+                put("timestamp", m.timestamp)
+            }
+        }
+        return MgxdCodec.buildFile(data, emptyList())
     }
 
     /** 采集今日屏幕时间摘要（未授权或异常返回 null，AI 上下文标记为无数据） */
