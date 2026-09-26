@@ -15,7 +15,35 @@ class MGApp : Application() {
     lateinit var container: AppContainer
         private set
 
+    /**
+     * 记录未捕获异常到 /sdcard/Android/data/<包名>/files/crash-last.txt
+     * （应用自有目录，无需存储权限；闪退后可把这个文件发给开发者定位）
+     */
+    private fun installCrashLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            try {
+                val dir = getExternalFilesDir(null) ?: filesDir
+                val out = java.io.File(dir, "crash-last.txt")
+                val time = java.text.SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()
+                ).format(java.util.Date())
+                out.writeText(
+                    "time=" + time + "\n" +
+                        "version=" + BuildConfig.VERSION_NAME + "\n" +
+                        "thread=" + thread.name + "\n" +
+                        android.util.Log.getStackTraceString(e)
+                )
+            } catch (ignore: Throwable) {
+                // 记录失败则忽略，不影响正常崩溃流程
+            }
+            previous?.uncaughtException(thread, e)
+        }
+    }
+
     override fun onCreate() {
+        // 崩溃自诊断：把未捕获异常堆栈写到外部私有目录，便于定位发行版闪退
+        installCrashLogger()
         // 调试构建开启 StrictMode：把主线程磁盘/网络读写、未关闭资源直接打到 Logcat
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(
