@@ -66,6 +66,9 @@ suspend fun insertChat(role: String, content: String): Long =
 suspend fun insertChatMessage(entity: ChatEntity): Long = db.chatDao().insert(entity)
 suspend fun clearChats() = db.chatDao().clearAll()
 
+/** 删除指定聊天消息（聊天页多选删除） */
+suspend fun deleteChats(ids: List<Long>) = db.chatDao().deleteByIds(ids)
+
     // ================= 每日打卡 =================
     fun observeHabits(): Flow<List<HabitEntity>> = db.habitDao().observeAll()
     suspend fun getHabit(id: Long): HabitEntity? = db.habitDao().getById(id)
