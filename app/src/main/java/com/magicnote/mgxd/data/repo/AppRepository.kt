@@ -61,6 +61,9 @@ suspend fun deleteDiaryById(id: Long) = db.diaryDao().deleteById(id)
 fun observeChats(): Flow<List<ChatEntity>> = db.chatDao().observeAll()
 suspend fun insertChat(role: String, content: String): Long =
     db.chatDao().insert(ChatEntity(role = role, content = content))
+
+/** 按实体插入聊天消息（导入 .mgxd 时保留原 id / 时间戳） */
+suspend fun insertChatMessage(entity: ChatEntity): Long = db.chatDao().insert(entity)
 suspend fun clearChats() = db.chatDao().clearAll()
 
     // ================= 每日打卡 =================
