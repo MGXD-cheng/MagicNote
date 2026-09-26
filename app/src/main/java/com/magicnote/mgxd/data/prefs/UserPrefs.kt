@@ -52,6 +52,8 @@ class UserPrefs(private val context: Context) {
         private val KEY_DIARY_AUTO_REPLY = booleanPreferencesKey("diary_auto_reply")
         private val KEY_MODEL_VISION = booleanPreferencesKey("model_vision")
         private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        // ---- Magic AI 输出自动渲染 Markdown ----
+        private val KEY_MARKDOWN_RENDER = booleanPreferencesKey("markdown_render")
 
         private val json = Json { ignoreUnknownKeys = true }
 
@@ -256,6 +258,16 @@ class UserPrefs(private val context: Context) {
 
     suspend fun saveModelVision(enabled: Boolean) {
         context.dataStore.edit { p -> p[KEY_MODEL_VISION] = enabled }
+    }
+
+    // ---------- Magic AI 输出自动渲染 Markdown ----------
+    /** 开启后：Magic AI 的回复里若含 Markdown 语法，聊天界面会自动渲染（标题/列表/粗体/代码块等） */
+    val markdownRender: Flow<Boolean> = context.dataStore.data.map { p ->
+        p[KEY_MARKDOWN_RENDER] ?: true
+    }
+
+    suspend fun saveMarkdownRender(enabled: Boolean) {
+        context.dataStore.edit { p -> p[KEY_MARKDOWN_RENDER] = enabled }
     }
 
     // ---------- 应用自定义分类 ----------
