@@ -64,8 +64,10 @@ class CalendarViewModel(
 
     fun addEvent(title: String, start: Long, end: Long, description: String?, color: Int, remindMinutes: Int = 0) {
         viewModelScope.launch {
-            // 时间冲突自动对齐：后一个日程顺延到已有日程结束之后
-            val (s, e) = EventConflictResolver.resolve(start, end, _events.value)
+            // 时间冲突自动对齐：更早的日程结束时间对齐到本日程开始（必要时本日程再顺延）
+            val aligned = EventConflictResolver.resolve(start, end, _events.value)
+            aligned.shrunken.forEach { repo.updateEvent(it) }
+            val (s, e) = aligned.start to aligned.end
             val id = repo.insertEvent(
                 CalendarEventEntity(
                     title = title, startTime = s, endTime = e,
@@ -84,7 +86,9 @@ class CalendarViewModel(
     /** 编辑日程：更新内容，同样自动处理时间冲突（排除自身），并重排提醒 */
     fun updateEvent(event: CalendarEventEntity) {
         viewModelScope.launch {
-            val (s, e) = EventConflictResolver.resolve(event.startTime, event.endTime, _events.value, event.id)
+            val aligned = EventConflictResolver.resolve(event.startTime, event.endTime, _events.value, event.id)
+            aligned.shrunken.forEach { repo.updateEvent(it) }
+            val (s, e) = aligned.start to aligned.end
             repo.updateEvent(event.copy(startTime = s, endTime = e))
             if (s != event.startTime) {
                 _lastAdjustHint.value = "「${event.title}」与已有日程时间冲突，已自动顺延到 ${TimeUtils.formatMillis(s, "HH:mm")}"
@@ -232,7 +236,14 @@ class CalendarViewModel(
                     if (isEvent) {
                         val start = step.startTime ?: step.dueTime ?: System.currentTimeMillis()
                         val end = step.endTime ?: (start + 60 * 60 * 1000)
-                        val (s, e) = EventConflictResolver.resolve(start, end, localEvents)
+                        val aligned = EventConflictResolver.resolve(start, end, localEvents)
+                        // 更早的日程结束时间对齐到本步骤开始；本地累积列表同步更新，后续步骤才能看到最新时间
+                        aligned.shrunken.forEach { shrunk ->
+                            repo.updateEvent(shrunk)
+                            val li = localEvents.indexOfFirst { it.id == shrunk.id }
+                            if (li >= 0) localEvents[li] = shrunk
+                        }
+                        val (s, e) = aligned.start to aligned.end
                         val id = repo.insertEvent(
                             CalendarEventEntity(
                                 title = step.title, startTime = s, endTime = e,
