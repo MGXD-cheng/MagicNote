@@ -13,6 +13,10 @@ import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.geometry.Offset
@@ -368,7 +372,12 @@ fun EditDiaryDialog(
         onDismissRequest = onDismiss,
         title = { Text(existing?.let { "编辑日记" } ?: "写日记 - ${defaultDate.format(DateTimeFormatter.ofPattern("M月d日"))}") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -393,9 +402,12 @@ fun EditDiaryDialog(
                     Text("图片（保存到本机，不联网上传）", style = MaterialTheme.typography.labelMedium)
                     Spacer(Modifier.height(6.dp))
                     if (images.isNotEmpty()) {
+                        // 横向滚动：图片多了也不会挤出屏幕（之前超出宽度的图无法显示/无法删除）
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
                         ) {
                             images.forEach { path ->
                                 DiaryThumb(path = path, onClick = { images = images - path })
