@@ -579,7 +579,12 @@ private fun AddHabitDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initialTitle.isBlank()) "新建每日打卡" else "编辑每日打卡") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -774,7 +779,12 @@ private fun AddCountdownDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initialTitle.isBlank()) "新建倒数日" else "编辑倒数日") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -840,7 +850,12 @@ fun AiQuickAddDialog(
         onDismissRequest = onDismiss,
         title = { Text("🪄 Magic AI 一句话建待办") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 TodoTypeSelector(isLongTerm = isLongTerm, onSelect = { isLongTerm = it })
                 OutlinedTextField(
                     value = input,
@@ -1105,7 +1120,12 @@ fun AddTodoDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initialTitle.isBlank()) "新建待办" else "编辑待办") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 TodoTypeSelector(isLongTerm = isLongTerm, onSelect = { isLongTerm = it })
                 OutlinedTextField(
                     value = title,
