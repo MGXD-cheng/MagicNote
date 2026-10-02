@@ -174,10 +174,11 @@ object AiPrompter {
             (userQuery.contains("日记") || DATE_HINT.containsMatchIn(userQuery))
         if (wantsDetail) {
             val matched = sorted.filter { queryMatchesDate(userQuery!!, it.date) }
-            val list = (if (matched.isNotEmpty()) matched else sorted).take(10)
+            // 命中具体日期时把这些日记全部给全；否则取最近 20 篇。单篇放宽到 20000 字，避免「注入不完全」
+            val list = if (matched.isNotEmpty()) matched else sorted.take(20)
             append("    <diary mode='full' count='")
             append(list.size)
-            append("' note='用户正在查看日记，下面是逐篇全文（每篇最多 4000 字），请基于全文回答，不要凭空补充'>")
+            append("' note='用户正在查看日记，下面是逐篇全文，请基于全文回答，不要凭空补充；若用户问某一天，就以对应日期那篇为准'>")
             appendLine()
             list.forEach { d ->
                 append("        <diary date='")
@@ -186,8 +187,10 @@ object AiPrompter {
                 append(moodEmoji(d.mood))
                 append("' title='")
                 append(xmlEscape(d.title.orEmpty()))
+                append("' chars='")
+                append(d.content.length)
                 append("'>")
-                append(xmlEscape(d.content.take(4000)))
+                append(xmlEscape(d.content.take(20000)))
                 appendLine("</diary>")
             }
             return@buildString
