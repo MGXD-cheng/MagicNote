@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
 import com.magicnote.mgxd.notify.NotificationHelper
 import com.magicnote.mgxd.notify.ReminderScheduler
 import com.magicnote.mgxd.ui.navigation.AppNav
@@ -33,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -132,9 +134,40 @@ class MainActivity : ComponentActivity() {
             val app = applicationContext as MGApp
             val repo = app.container.repository
             ReminderScheduler.rescheduleAll(applicationContext, repo)
-            // 纯净模式：不启动后台守护
-            if (!repo.pureMode.first()) {
-                com.magicnote.mgxd.service.KeepAliveService.start(this@MainActivity)
+        }
+    }
+
+    /** 保活服务是否已尝试启动（只启动一次，后续 onResume 不再重复） */
+    private var keepAliveStarted = false
+
+    override fun onResume() {
+        super.onResume()
+        ensureKeepAliveStarted()
+    }
+
+    /**
+     * 启动后台守护（保活前台服务）。
+     *
+     * 时机说明：Android 12+ 限制「后台启动前台服务」，Android 14/15 校验更严；
+     * 若在 onCreate 阶段就启动，系统可能仍判定为后台状态并抛
+     * ForegroundServiceStartNotAllowedException（**首次安装后打开最易触发**），
+     * 异常发生在主线程会把整个进程带崩 → 表现为「一点开就闪退」。
+     * 因此改为界面可见（onResume）后再启动，且全程兜底，失败只降级不崩溃。
+     */
+    private fun ensureKeepAliveStarted() {
+        if (keepAliveStarted) return
+        keepAliveStarted = true
+        lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val repo = (application as MGApp).container.repository
+                    // 纯净模式：用户主动关闭了所有后台能力，不启动守护
+                    if (!repo.pureMode.first()) {
+                        com.magicnote.mgxd.service.KeepAliveService.start(applicationContext)
+                    }
+                }
+            }.onFailure {
+                android.util.Log.w("MainActivity", "keep-alive start skipped: ${it.message}")
             }
         }
     }
