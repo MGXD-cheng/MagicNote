@@ -654,8 +654,10 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
                 // 若 AI 只给了截止时间（从待办纠正而来），用 dueTime 作为日程开始，避免落到当前时刻
                 val start = cmd.startTime ?: cmd.dueTime ?: System.currentTimeMillis()
                 val end = cmd.endTime ?: (start + 60 * 60 * 1000)
-                // 时间冲突自动对齐：后一个日程顺延
-                val (s, e) = EventConflictResolver.resolve(start, end, events)
+                // 时间冲突自动对齐：更早的日程结束时间对齐到本日程开始（必要时本日程再顺延）
+                val aligned = EventConflictResolver.resolve(start, end, events)
+                aligned.shrunken.forEach { repo.updateEvent(it) }
+                val (s, e) = aligned.start to aligned.end
                 repo.insertEvent(
         CalendarEventEntity(
             title = title,
@@ -672,7 +674,9 @@ class AiViewModel(private val repo: AppRepository) : ViewModel() {
                 val target = events.firstOrNull { it.id == cmd.targetId } ?: return false
                 val start = cmd.startTime ?: target.startTime
                 val end = cmd.endTime ?: (cmd.startTime?.plus(60 * 60 * 1000) ?: target.endTime)
-                val (s, e) = EventConflictResolver.resolve(start, end, events, target.id)
+                val aligned = EventConflictResolver.resolve(start, end, events, target.id)
+                aligned.shrunken.forEach { repo.updateEvent(it) }
+                val (s, e) = aligned.start to aligned.end
                 repo.updateEvent(
                     target.copy(
                         title = cmd.title?.takeIf { it.isNotBlank() } ?: target.title,
