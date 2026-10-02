@@ -174,25 +174,28 @@ object MgxdCodec {
             val s = raw?.toString().orEmpty()
             if (s.isEmpty()) "" else "\"" + s.replace("\"", "\"\"") + "\""
         }
+        // 每个分支都补齐到 13 列，避免 Excel/WPS 打开时串列
+        // 列：type,id,title,date,start,end,content,mood,priority,completed,description,extra,images
+        val elem = { e: kotlinx.serialization.json.JsonElement? ->
+            (e as? JsonPrimitive)?.content.orEmpty()
+        }
+        val pad = { cols: List<String> ->
+            val fixed = cols.take(13).toMutableList()
+            while (fixed.size < 13) fixed.add("")
+            fixed.joinToString(",")
+        }
         for ((_, items) in selected) {
             for (o in items) {
-                when (o["type"]?.let { (it as JsonPrimitive).content }) {
-                    "todo" -> sb.append("待办,").append(o["id"]).append(',').append(csv(o["title"])).append(",,")
-                        .append(csv(o["dueTime"])).append(",,").append(csv(o["content"])).append(',')
-                        .append(csv(o["priority"])).append(',').append(csv(o["completed"])).append(',')
-                        .append(csv(o["description"])).append(",,").append('\n')
-                    "event" -> sb.append("日程,").append(o["id"]).append(',').append(csv(o["title"])).append(",,")
-                        .append(csv(o["startTime"])).append(',').append(csv(o["endTime"])).append(',').append(csv(o["content"])).append(',')
-                        .append(csv(o["color"])).append(',').append(csv(o["remindMinutes"])).append(',')
-                        .append(csv(o["description"])).append(",,").append('\n')
-                    "diary" -> sb.append("日记,").append(o["id"]).append(',').append(csv(o["title"])).append(',')
-                        .append(csv(o["date"])).append(",,").append(csv(o["content"])).append(',')
-                        .append(csv(o["mood"])).append(",,").append(csv(o["content"])).append(",\"\"\n")
-                    "habit" -> sb.append("打卡,").append(o["id"]).append(',').append(csv(o["title"])).append(',')
-                        .append(csv(o["checkInDates"])).append(",,").append(csv(o["targetDays"])).append('\n')
-                    "countdown" -> sb.append("倒数日,").append(o["id"]).append(',').append(csv(o["title"])).append(',')
-                        .append(csv(o["targetDate"])).append('\n')
+                val cols: List<String>? = when (o["type"]?.let { elem(it) }) {
+                    //                  type      id              title                date  start            end              content        mood           priority          completed        description          extra                images
+                    "todo" -> listOf("待办", elem(o["id"]), csv(o["title"]), "", elem(o["dueTime"]), "", elem(o["content"]), "", csv(o["priority"]), csv(o["completed"]), csv(o["description"]), "", "")
+                    "event" -> listOf("日程", elem(o["id"]), csv(o["title"]), "", elem(o["startTime"]), elem(o["endTime"]), elem(o["content"]), "", "", "", csv(o["description"]), csv(o["color"]), csv(o["remindMinutes"]))
+                    "diary" -> listOf("日记", elem(o["id"]), csv(o["title"]), elem(o["date"]), "", "", csv(o["content"]), csv(o["mood"]), "", "", "", "", "")
+                    "habit" -> listOf("打卡", elem(o["id"]), csv(o["title"]), "", "", "", csv(o["checkInDates"]), "", "", "", csv(o["targetDays"]), "", "")
+                    "countdown" -> listOf("倒数日", elem(o["id"]), csv(o["title"]), elem(o["targetDate"]), "", "", "", "", "", "", "", "", "")
+                    else -> null
                 }
+                if (cols != null) sb.append(pad(cols)).append('\n')
             }
         }
         return sb.toString()
