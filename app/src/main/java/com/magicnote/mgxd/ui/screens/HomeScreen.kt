@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -591,7 +592,8 @@ private fun buildHomeTip(
 
 @Composable
 private fun AiTipCard(tip: String, onClick: () -> Unit) {
-    val dark = isSystemInDarkTheme()
+    // 用当前主题背景亮度判断深浅，而不是系统设置 —— 否则「系统亮色 + App 强制暗色」时会用错配色
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val container = if (dark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF0E8FF)
     val accent = if (dark) Color(0xFFB49BFF) else Color(0xFF5B3DF5)
 
@@ -633,7 +635,8 @@ private fun AiTipCard(tip: String, onClick: () -> Unit) {
 
 @Composable
 private fun ScreenTimeCard(total: Long, categories: List<ScreenTimeManager.CategoryUsage>) {
-    val dark = isSystemInDarkTheme()
+    // 用当前主题背景亮度判断深浅，而不是系统设置 —— 否则「系统亮色 + App 强制暗色」时会用错配色
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val container = if (dark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF0E8FF)
 
     Card(
