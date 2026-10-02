@@ -3,6 +3,8 @@ package com.magicnote.mgxd.service
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import androidx.core.content.ContextCompat
 import com.magicnote.mgxd.MGApp
@@ -56,10 +58,39 @@ class KeepAliveService : Service() {
         super.onCreate()
         // 前台服务必须立刻发布通知（startForegroundService 5 秒内）
         NotificationHelper.ensureChannels(this)
-        startForeground(
-            NotificationHelper.NOTIFY_ID_KEEP_ALIVE,
-            NotificationHelper.buildKeepAliveNotification(this)
-        )
+        // Android 13/14/15 对前台服务校验越来越严（类型缺失、通知渠道异常、厂商 ROM 限制），
+        // 这里失败绝不向外抛：拿不到前台状态就安静退出，避免整个进程被拖崩。
+        val ok = try {
+            startForegroundCompat()
+            true
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "startForeground failed: ${e.message}")
+            false
+        }
+        if (!ok) {
+            stopSelf()
+        }
+    }
+
+    /**
+     * 带类型的 startForeground（Android 14+ 要求 targetSdk>=34 的前台服务声明类型）。
+     * Android 10+ 支持三参数重载；14+ 与 manifest 的 specialUse 对齐。
+     */
+    private fun startForegroundCompat() {
+        val notification = NotificationHelper.buildKeepAliveNotification(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NotificationHelper.NOTIFY_ID_KEEP_ALIVE,
+                notification,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                } else {
+                    0
+                }
+            )
+        } else {
+            startForeground(NotificationHelper.NOTIFY_ID_KEEP_ALIVE, notification)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -181,6 +212,9 @@ class KeepAliveService : Service() {
         /** AI 待办提醒最小间隔：1 小时（今日待办未完成时） */
         const val AI_REMIND_INTERVAL_MS = 60 * 60 * 1000L
 
+        /** 日志标签（保活服务被系统拦截时输出，便于真机排查） */
+        private const val TAG = "KeepAliveService"
+
         /** 夜间静默：22 点起不催促 */
         const val NIGHT_SILENT_START_HOUR = 22
 
@@ -197,8 +231,15 @@ class KeepAliveService : Service() {
         const val DAILY_URGE_INTERVAL_MS = 23 * 60 * 60 * 1000L
 
         fun start(context: Context) {
-            val intent = Intent(context, KeepAliveService::class.java)
-            ContextCompat.startForegroundService(context, intent)
+            try {
+                val intent = Intent(context, KeepAliveService::class.java)
+                ContextCompat.startForegroundService(context, intent)
+            } catch (e: Exception) {
+                // Android 12+ 后台启动前台服务受限（ForegroundServiceStartNotAllowedException），
+                // Android 14+/15 类型校验或厂商 ROM 拦截也会在这里抛出。
+                // 保活只是增强功能：起不来就降级运行，绝不能因此让 App 崩溃。
+                android.util.Log.w(TAG, "keep-alive start rejected: ${e.message}")
+            }
         }
 
         /** 停止后台守护（纯净模式） */
