@@ -216,12 +216,20 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
 
     private suspend fun existingKeySets(): Set<String> {
         val s = HashSet<String>()
-        repo.observeTodos().first().forEach { s.add(minuteKey("todo", it.dueTime ?: it.createdAt)) }
-        repo.observeAllEvents().first().forEach { s.add(minuteKey("event", it.startTime)) }
-        repo.observeDiaries().first().forEach { s.add(minuteKey("diary", it.createdAt)) }
-        repo.observeHabits().first().forEach { s.add(minuteKey("habit", it.createdAt)) }
+        repo.observeTodos().first().forEach {
+            s.add(minuteKey("todo", it.dueTime ?: it.createdAt) + ":" + contentDigestOf("todo", it.title, null))
+        }
+        repo.observeAllEvents().first().forEach {
+            s.add(minuteKey("event", it.startTime) + ":" + contentDigestOf("event", it.title, null))
+        }
+        repo.observeDiaries().first().forEach {
+            s.add(minuteKey("diary", it.createdAt) + ":" + contentDigestOf("diary", it.title, it.content))
+        }
+        repo.observeHabits().first().forEach {
+            s.add(minuteKey("habit", it.createdAt) + ":" + contentDigestOf("habit", it.title, null))
+        }
         repo.observeCountdowns().first().forEach {
-            s.add(minuteKey("countdown", it.targetDate.takeIf { t -> t > 0L } ?: it.createdAt))
+            s.add(minuteKey("countdown", it.targetDate.takeIf { t -> t > 0L } ?: it.createdAt) + ":" + contentDigestOf("countdown", it.title, null))
         }
         // 聊天：角色 + 内容 + 分钟（只按分钟会把同一分钟内的 AI 回复误判成重复而丢掉）
         repo.observeChats().first().forEach { s.add(chatKey(it.role, it.content, it.timestamp)) }
@@ -263,7 +271,8 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
         }
         // 聊天判重必须带角色与内容：同一分钟内的「用户提问 + AI 回复」是两条不同消息
         if (type == "chat") return chatKey(jsonField(o, "role"), jsonField(o, "content"), time)
-        return minuteKey(type, time)
+        // 其余类型：分钟 + 内容摘要（避免同一分钟创建的多条相似记录被误判为重复）
+        return minuteKey(type, time) + ":" + contentDigest(type, o)
     }
 
     /**
@@ -272,7 +281,22 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
      * 否则第一条导入后 AI 回复会被当作重复项直接跳过（表现为「AI 回复没同步过来」）。
      */
     private fun chatKey(role: String, content: String, millis: Long?): String =
-        "chat:" + role + ":" + content.hashCode() + ":" + ((millis ?: 0L) / 60_000L)
+        "chat:" + role + ":" + content.hashCode() + ":" + (millis ?: 0L)
+
+    /**
+     * 非聊天类型的「内容摘要」：标题 / 内容 hash。
+     * 判重键 = 类型 + 分钟 + 摘要 → 同一分钟内的多条不同记录不会被吃掉，
+     * 而重复导入同一份备份时仍然能识别为重复。
+     */
+    private fun contentDigest(type: String, o: JsonObject): String = when (type) {
+        "diary" -> jsonField(o, "content").hashCode().toString()
+        else -> jsonField(o, "title").hashCode().toString()
+    }
+
+    private fun contentDigestOf(type: String, title: String?, content: String?): String = when (type) {
+        "diary" -> (content ?: "").hashCode().toString()
+        else -> (title ?: "").hashCode().toString()
+    }
 
     /**
      * 执行导入。逐条：
@@ -318,15 +342,16 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                         when (action) {
                             "skip" -> { skipped++ }
                             "overwrite" -> {
-                                writeEntity(appContext, type, item, rawId, imageMap, imageDir)
+                                // 一律不沿用文件里的 id（自增），避免 REPLACE 覆盖本地另一条记录
+                                failedImages += writeEntity(appContext, type, item, 0L, imageMap, imageDir)
                                 overwritten++
                             }
                             "duplicate" -> {
-                                writeEntity(appContext, type, item, 0L, imageMap, imageDir)
+                                failedImages += writeEntity(appContext, type, item, 0L, imageMap, imageDir)
                                 duplicated++
                             }
                             else -> {
-                                writeEntity(appContext, type, item, rawId, imageMap, imageDir)
+                                failedImages += writeEntity(appContext, type, item, 0L, imageMap, imageDir)
                                 imported++
                             }
                         }
@@ -334,7 +359,11 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                         existingKeys.add(key)
                     }
                     // 汇总图片失败数（decodeImageToFile 返回 null 的由 writeEntity 内部累计，这里简化统计）
-                    ImportResult(imported = imported, skipped = skipped, overwritten = overwritten, duplicated = duplicated)
+                    ImportResult(
+                        imported = imported, skipped = skipped,
+                        overwritten = overwritten, duplicated = duplicated,
+                        failedImages = failedImages
+                    )
                 } catch (e: Exception) {
                     ImportResult()
                 }
@@ -423,14 +452,16 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
         forceId: Long,
         imageMap: Map<String, JsonObject>,
         imageDir: File
-    ) {
+    ): Int {
+        // 返回：图片落盘失败的数量（导入结果里会汇总提示）
+        var failedImages = 0
         val id = forceId.takeIf { it > 0 } ?: 0L
         val rawId = (item["id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
         when (type) {
             "todo" -> repo.insertTodo(
                 TodoEntity(
                     id = id,
-                    title = s(item, "title") ?: return,
+                    title = s(item, "title") ?: return failedImages,
                     description = s(item, "description"),
                     dueTime = l(item, "dueTime"),
                     remindAt = l(item, "remindAt"),
@@ -445,9 +476,9 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
             "event" -> repo.insertEvent(
                 CalendarEventEntity(
                     id = id,
-                    title = s(item, "title") ?: return,
-                    startTime = l(item, "startTime") ?: return,
-                    endTime = l(item, "endTime") ?: (l(item, "startTime") ?: return),
+                    title = s(item, "title") ?: return failedImages,
+                    startTime = l(item, "startTime") ?: return failedImages,
+                    endTime = l(item, "endTime") ?: (l(item, "startTime") ?: return failedImages),
                     description = s(item, "description"),
                     color = i(item, "color", 0xFF7C4DFF.toInt()),
                     createdAt = l(item, "createdAt") ?: System.currentTimeMillis(),
@@ -456,7 +487,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                 )
             )
             "diary" -> {
-                val date = l(item, "date") ?: return
+                val date = l(item, "date") ?: return failedImages
                 val content = s(item, "content") ?: ""
                 // 图片占位符 → 写盘还原路径
                 val imgRefs = (item["imagePaths"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
@@ -469,7 +500,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
                             val dataUrl = (img["data"] as? JsonPrimitive)?.content
                             val name = (img["name"] as? JsonPrimitive)?.content ?: "img_${UUID.randomUUID().toString().substring(0, 8)}.jpg"
                             val path = if (dataUrl != null) MgxdCodec.decodeImageToFile(dataUrl, imageDir, name) else null
-                            if (path != null) resolved.add(path)
+                            if (path != null) resolved.add(path) else failedImages++
                         }
                     } else {
                         resolved.add(ref) // 普通路径原样保留
@@ -491,7 +522,7 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
             "habit" -> repo.insertHabit(
                 HabitEntity(
                     id = id,
-                    title = s(item, "title") ?: return,
+                    title = s(item, "title") ?: return failedImages,
                     remindHour = i(item, "remindHour", -1),
                     remindMinute = i(item, "remindMinute", 0),
                     targetDays = i(item, "targetDays", 0),
@@ -503,25 +534,28 @@ class DataTransferViewModel(private val repo: AppRepository) : ViewModel() {
             "chat" -> repo.insertChatMessage(
                 ChatEntity(
                     id = id,
-                    role = s(item, "role") ?: return,
-                    content = s(item, "content") ?: return,
+                    role = s(item, "role") ?: return failedImages,
+                    content = s(item, "content") ?: return failedImages,
                     timestamp = l(item, "timestamp") ?: System.currentTimeMillis()
                 )
             )
             "countdown" -> repo.insertCountdown(
                 CountdownEntity(
                     id = id,
-                    title = s(item, "title") ?: return,
-                    targetDate = l(item, "targetDate") ?: return,
+                    title = s(item, "title") ?: return failedImages,
+                    targetDate = l(item, "targetDate") ?: return failedImages,
                     createdAt = l(item, "createdAt") ?: System.currentTimeMillis()
                 )
             )
         }
+        return failedImages
     }
 
     private fun s(o: JsonObject, k: String): String? = (o[k] as? JsonPrimitive)?.contentOrNull
     private fun l(o: JsonObject, k: String): Long? = (o[k] as? JsonPrimitive)?.content?.toLongOrNull()
-    private fun i(o: JsonObject, k: String, def: Int): Int = (o[k] as? JsonPrimitive)?.content?.toIntOrNull() ?: def
+    /** 读取 Int 字段：先按 Long 解析再收窄，兼容外部写成的无符号 32 位值（0xFF42A5F5 会超 Int.MAX） */
+    private fun i(o: JsonObject, k: String, def: Int): Int =
+        (o[k] as? JsonPrimitive)?.content?.toLongOrNull()?.toInt() ?: def
     private fun b(o: JsonObject, k: String): Boolean = (o[k] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
 
     companion object {
