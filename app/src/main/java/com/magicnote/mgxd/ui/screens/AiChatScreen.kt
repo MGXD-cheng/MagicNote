@@ -93,6 +93,7 @@ fun AiChatScreen(vm: AiViewModel) {
     var selectionMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showNotePicker by remember { mutableStateOf(false) }
+    var showClearPicker by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
 
     fun exitSelection() {
@@ -174,8 +175,9 @@ fun AiChatScreen(vm: AiViewModel) {
                         IconButton(onClick = { showExportDialog = true }) {
                             Icon(Icons.Default.Download, contentDescription = "导出聊天记录")
                         }
-                        IconButton(onClick = { vm.clearChat() }) {
-                            Icon(Icons.Default.Delete, contentDescription = "清空对话")
+                        // 不再一键清空：先让用户选择要删除的范围
+                        IconButton(onClick = { showClearPicker = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "删除聊天记录")
                         }
                     }
                 }
@@ -356,6 +358,22 @@ fun AiChatScreen(vm: AiViewModel) {
                 }
             }
         }
+    }
+
+    // ===== 删除范围选择（替代一键清空） =====
+    if (showClearPicker) {
+        MessagePickerDialog(
+            messages = messages,
+            title = "删除聊天记录",
+            hint = "勾选要删除的聊天条目，确认后只删除选中的内容（想全清可以点「全选」）",
+            confirmLabel = "删除所选",
+            onDismiss = { showClearPicker = false },
+            onConfirm = { ids ->
+                showClearPicker = false
+                vm.deleteChats(ids)
+                Toast.makeText(context, "已删除 ${ids.size} 条", Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 
     // ===== 删除确认 =====
