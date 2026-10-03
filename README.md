@@ -7,8 +7,9 @@
 ![Kotlin](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin&logoColor=white)
 ![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4)
 [![Version](https://img.shields.io/github/v/release/MGXD-cheng/MagicNote?label=version&color=7C4DFF)](https://github.com/MGXD-cheng/MagicNote/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/MGXD-cheng/MagicNote/total?color=success)](https://github.com/MGXD-cheng/MagicNote/releases/latest)
 
-[![version](https://img.shields.io/github/v/release/MGXD-cheng/MagicNote?label=version&color=7C4DFF)](https://github.com/MGXD-cheng/MagicNote/releases/latest) ｜ 包名 `com.magicnote.mgxd` ｜ 最低支持 Android 7.0（API 24）
+包名 `com.magicnote.mgxd` ｜ 最低支持 Android 7.0（API 24）｜ [下载最新 APK »](https://github.com/MGXD-cheng/MagicNote/releases/latest)
 
 > 版本号规则：每版 +0.1（7.1 → 7.2 → … → 7.9 → **8.1**），不出现 x.0 与两位数小数位。
 
