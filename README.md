@@ -8,7 +8,7 @@
 ![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4)
 [![Release](https://img.shields.io/github/v/release/MGXD-cheng/MagicNote)](https://github.com/MGXD-cheng/MagicNote/releases/latest)
 
-**当前版本：7.6** ｜ 包名 `com.magicnote.mgxd` ｜ 最低支持 Android 7.0（API 24）
+**当前版本：7.7** ｜ 包名 `com.magicnote.mgxd` ｜ 最低支持 Android 7.0（API 24）
 
 > 版本号规则：每版 +0.1（7.1 → 7.2 → … → 7.9 → **8.1**），不出现 x.0 与两位数小数位。
 
