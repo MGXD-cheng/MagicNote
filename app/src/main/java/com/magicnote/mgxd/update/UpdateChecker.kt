@@ -19,7 +19,7 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * 检查更新（数据源：GitHub 仓库 MGXD-cheng/MagicNote）
+ * 检查更新（数据源：GitHub 仓库 MGXD-cheng/magic-note-android）
  *
  * 优先级：
  * 1. `releases/latest` —— 取 tag_name 与 assets 里的 .apk 直链（发布时把 APK 作为 release asset 上传即可全自动更新）
@@ -38,7 +38,7 @@ data class UpdateInfo(
 
 object UpdateChecker {
     private const val OWNER = "MGXD-cheng"
-    private const val REPO = "MagicNote"
+    private const val REPO = "magic-note-android"
     private const val REPO_URL = "https://github.com/$OWNER/$REPO"
 
     private val client by lazy {
