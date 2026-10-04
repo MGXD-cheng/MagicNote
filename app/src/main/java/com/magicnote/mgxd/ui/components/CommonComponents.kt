@@ -29,6 +29,8 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerState
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,26 +68,34 @@ fun DateTimePickerDialog(
     var showDatePicker by remember { mutableStateOf(true) }
     var date by remember { mutableStateOf(initialDate) }
     var time by remember { mutableStateOf(initialTime) }
+    // 点「今天」后自增：用于强制重建 DatePicker 的选中状态（默认就选今天）
+    var todayTick by remember { mutableIntStateOf(0) }
 
     if (showDatePicker) {
-        val dateState = rememberDatePickerState(
-            initialSelectedDateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        )
-        DatePickerDialog(
-            onDismissRequest = onDismiss,
-            confirmButton = {
-                TextButton(onClick = {
-                    dateState.selectedDateMillis?.let { millis ->
-                        date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+        key(todayTick) {
+            val baseDate = if (todayTick > 0) LocalDate.now() else date
+            val dateState = rememberDatePickerState(
+                initialSelectedDateMillis = baseDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            )
+            DatePickerDialog(
+                onDismissRequest = onDismiss,
+                confirmButton = {
+                    TextButton(onClick = {
+                        dateState.selectedDateMillis?.let { millis ->
+                            date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+                        }
+                        showDatePicker = false
+                    }) { Text("下一步") }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = { date = LocalDate.now(); todayTick++ }) { Text("今天") }
+                        TextButton(onClick = onDismiss) { Text("取消") }
                     }
-                    showDatePicker = false
-                }) { Text("下一步") }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismiss) { Text("取消") }
+                }
+            ) {
+                DatePicker(state = dateState, title = { Text(title) })
             }
-        ) {
-            DatePicker(state = dateState, title = { Text(title) })
         }
     } else {
         val timeState = rememberTimePickerState(
