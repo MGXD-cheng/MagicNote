@@ -173,7 +173,7 @@ object AiPrompter {
         val wantsDetail = userQuery != null &&
             (userQuery.contains("日记") || DATE_HINT.containsMatchIn(userQuery))
         if (wantsDetail) {
-            val matched = sorted.filter { queryMatchesDate(userQuery!!, it.date) }
+            val matched = sorted.filter { queryMatchesDate(userQuery, it.date) }
             // 命中具体日期时把这些日记全部给全；否则取最近 20 篇。单篇放宽到 20000 字，避免「注入不完全」
             val list = if (matched.isNotEmpty()) matched else sorted.take(20)
             append("    <diary mode='full' count='")
