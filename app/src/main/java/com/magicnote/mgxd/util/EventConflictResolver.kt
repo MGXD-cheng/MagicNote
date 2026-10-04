@@ -39,15 +39,23 @@ object EventConflictResolver {
             shrunken.add(ev.copy(endTime = start))
         }
 
-        // ② 新日程自身仍需避让其它日程（已被缩短的那些不再参与）
+        // ② 若新日程「吞掉」了某个更晚开始的日程的开头，则新日程自己的结束时间收窄到那个开始时间
+        //    （同一条规则的另一面：开始时间更早的那个，其结束时间与下一个的开始时间对齐）
+        val laterStart = events.filter { ev ->
+            ev.id != excludeId && ev.startTime > start && ev.startTime < end
+        }.minOfOrNull { it.startTime }
+
         var s = start
-        var e = start + duration
+        var e = laterStart ?: end
+
+        // ③ 兜底：仍与其它日程重叠（例如完全包含某条）→ 顺延，时长保持原值
         var guard = 0
         while (guard++ < MAX_PASSES) {
             val clash = events.firstOrNull { ev ->
                 ev.id != excludeId &&
                     s < ev.endTime && ev.startTime < e &&
-                    !(ev.startTime <= start && ev.endTime > start)
+                    !(ev.startTime <= start && ev.endTime > start) &&
+                    ev.startTime != laterStart
             }
             if (clash == null) break
             s = clash.endTime
