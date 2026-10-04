@@ -568,16 +568,16 @@ private fun buildHomeTip(
             "今日任务全部搞定！给努力的自己记一篇日记吧 ✨"
 
         else -> {
-            val soonest = pending.filter { it.dueTime != null }.minByOrNull { it.dueTime!! }
+            val soonest = pending.mapNotNull { e -> e.dueTime?.let { e to it } }.minByOrNull { it.second }?.first
             val high = pending.firstOrNull { it.priority == 2 }
             when {
                 soonest != null -> {
-                    val remain = soonest.dueTime!! - now
+                    val remain = (soonest.dueTime ?: now) - now
                     val label = when {
                         remain <= 0 -> "已经超时啦"
                         remain < 60 * 60 * 1000 -> "还剩 ${remain / 60 / 1000} 分钟"
                         remain < 24 * 60 * 60 * 1000 -> "还剩 ${remain / 3600 / 1000} 小时"
-                        else -> "截止 ${TimeUtils.formatMillis(soonest.dueTime!!)}"
+                        else -> "截止 ${TimeUtils.formatMillis(soonest.dueTime ?: now)}"
                     }
                     "建议先搞定「${soonest.title}」，$label ⏰"
                 }
