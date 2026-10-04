@@ -937,24 +937,47 @@ private fun FocusModeScreen(
     val context = LocalContext.current
     val activity = context as? Activity
 
+    // 勿扰相关状态：进入前状态 / 是否弹出授权引导
+    var prevDnd by remember { mutableStateOf<Int?>(null) }
+    var askDndGrant by remember { mutableStateOf(false) }
+
     // 进入：横屏 + 屏幕常亮 + 自动开启系统勿扰；退出：全部恢复
     DisposableEffect(Unit) {
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // 自动开启系统「勿扰」（未授权时只提示一次，功能照常使用，绝不崩溃）
-        val prevDnd = com.magicnote.mgxd.util.DndHelper.enter(context)
+        // 自动开启系统「勿扰」（未授权时提示并提供授权入口，功能照常使用，绝不崩溃）
+        prevDnd = com.magicnote.mgxd.util.DndHelper.enter(context)
         if (prevDnd == null && !com.magicnote.mgxd.util.DndHelper.isGranted(context)) {
-            android.widget.Toast.makeText(
-                context,
-                "想在专注时自动开启系统勿扰？请授予「通知访问权限」",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
+            askDndGrant = true
         }
         onDispose {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             com.magicnote.mgxd.util.DndHelper.exit(context, prevDnd)
         }
+    }
+
+    // 未授权「通知访问权限」时的引导对话框
+    if (askDndGrant) {
+        AlertDialog(
+            onDismissRequest = { askDndGrant = false },
+            title = { Text("让专注更纯净？") },
+            text = {
+                Text(
+                    "授予「通知访问权限」后，进入专注模式会自动开启系统勿扰，" +
+                        "退出时恢复原状态。不授权也可以正常使用专注模式。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    askDndGrant = false
+                    runCatching { context.startActivity(com.magicnote.mgxd.util.DndHelper.accessSettingsIntent()) }
+                }) { Text("去授权") }
+            },
+            dismissButton = {
+                TextButton(onClick = { askDndGrant = false }) { Text("以后再说") }
+            }
+        )
     }
 
     // 秒级刷新当前时间
