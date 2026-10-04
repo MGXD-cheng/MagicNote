@@ -8,6 +8,7 @@
 ![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4)
 [![Version](https://img.shields.io/github/v/release/MGXD-cheng/MagicNote?label=version&color=7C4DFF)](https://github.com/MGXD-cheng/MagicNote/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/MGXD-cheng/MagicNote/total?color=success)](https://github.com/MGXD-cheng/MagicNote/releases/latest)
+[![License](https://img.shields.io/github/license/MGXD-cheng/MagicNote?color=blue)](LICENSE)
 
 包名 `com.magicnote.mgxd` ｜ 最低支持 Android 7.0（API 24）｜ [下载最新 APK »](https://github.com/MGXD-cheng/MagicNote/releases/latest)
 
