@@ -72,15 +72,31 @@ object ReminderScheduler {
         scheduleExact(context, nextTriggerMillis(hour, minute), pi)
     }
 
-    /** 统一调度：有精确闹钟权限用 setExactAndAllowWhileIdle，否则用 setAlarmClock 精确触发 */
+    /**
+     * 统一调度（安全版）：
+     * 1) 有「闹钟和提醒」权限 → setExactAndAllowWhileIdle（最精确）
+     * 2) 无权限 → 不能用 setAlarmClock！它和 setExact 一样属于"精确闹钟"，
+     *    在 Android 12+ 同样需要 SCHEDULE_EXACT_ALARM，无权限时直接抛
+     *    SecurityException 导致闪退（v8.0 修复的崩溃元凶；新装设备/换包名后默认无此权限）。
+     *    改为 setAndAllowWhileIdle：不需要任何权限，Doze 下也会唤醒，只是不保证精确到分钟。
+     * 3) 任何异常都兜底（权限被撤销 / ROM 差异 / 系统限制），最后再降级为普通 set，
+     *    调度失败最多"提醒晚一点或不提醒"，绝不让 App 崩溃。
+     */
     private fun scheduleExact(context: Context, triggerAt: Long, pi: PendingIntent) {
         val am = alarmManager(context)
-        if (canScheduleExact(context)) {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
-        } else {
-            // 无精确闹钟权限时：setWindow 在 Doze/国产 ROM 省电策略下会被严重延迟甚至不触发（每日汇总失效元凶）。
-            // setAlarmClock 无需任何权限、精确触发、Doze 也唤醒（仅状态栏显示一个小闹钟图标，提示用户有定时任务）。
-            am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, null), pi)
+        try {
+            if (canScheduleExact(context)) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("ReminderScheduler", "精确调度失败，降级为普通闹钟", t)
+            try {
+                am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi)
+            } catch (ignore: Throwable) {
+                // 彻底失败：放弃本次调度，不影响 App 运行
+            }
         }
     }
 
