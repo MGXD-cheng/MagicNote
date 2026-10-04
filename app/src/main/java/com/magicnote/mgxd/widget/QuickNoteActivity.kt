@@ -145,7 +145,7 @@ class QuickNoteActivity : ComponentActivity() {
                 message = "已加入今日待办"
             }
 
-            Toast.makeText(this@QuickNoteActivity, message!!, Toast.LENGTH_SHORT).show()
+            message?.takeIf { it.isNotBlank() }?.let { Toast.makeText(this@QuickNoteActivity, it, Toast.LENGTH_SHORT).show() }
             finish()
         }
     }
