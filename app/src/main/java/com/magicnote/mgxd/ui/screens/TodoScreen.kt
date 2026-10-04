@@ -806,7 +806,7 @@ private fun AddCountdownDialog(
                 onClick = {
                     if (title.isNotBlank() && date != null) {
                         // 归一化到目标日当天 0 点，避免时间差影响天数计算
-                        val dayStart = java.time.Instant.ofEpochMilli(date!!)
+                        val dayStart = java.time.Instant.ofEpochMilli(date ?: System.currentTimeMillis())
                             .atZone(ZoneId.systemDefault())
                             .toLocalDate()
                             .atStartOfDay(ZoneId.systemDefault())
@@ -887,7 +887,7 @@ fun AiQuickAddDialog(
                     }
 
                     parseState.result != null -> {
-                        val r = parseState.result!!
+                        val r = parseState.result!! // 该 when 分支已判非空
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier.padding(12.dp),
