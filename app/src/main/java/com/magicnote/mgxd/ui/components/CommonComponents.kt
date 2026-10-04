@@ -1,5 +1,6 @@
 package com.magicnote.mgxd.ui.components
 
+import java.time.ZoneOffset
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -74,15 +75,18 @@ fun DateTimePickerDialog(
     if (showDatePicker) {
         key(todayTick) {
             val baseDate = if (todayTick > 0) LocalDate.now() else date
+            // Material3 DatePicker 的 millis 以 UTC 零点表示「某一天」，
+            // 用本地时区转换会整体偏移（表现为「总是少一天/选中昨天」）
             val dateState = rememberDatePickerState(
-                initialSelectedDateMillis = baseDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                initialSelectedDateMillis = baseDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
             )
             DatePickerDialog(
                 onDismissRequest = onDismiss,
                 confirmButton = {
                     TextButton(onClick = {
                         dateState.selectedDateMillis?.let { millis ->
-                            date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+                            // 同样按 UTC 解释（DatePicker 返回的是 UTC 零点）
+                            date = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
                         }
                         showDatePicker = false
                     }) { Text("下一步") }
