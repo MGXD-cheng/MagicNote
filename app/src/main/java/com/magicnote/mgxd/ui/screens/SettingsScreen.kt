@@ -1,5 +1,12 @@
 package com.magicnote.mgxd.ui.screens
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import com.magicnote.mgxd.util.DndHelper
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -768,6 +775,48 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                 )
             }
 
+            // ===== 专注与免打扰 =====
+            SectionCard(title = "专注与免打扰", icon = Icons.Default.Notifications) {
+                val lifecycleOwner = LocalLifecycleOwner.current
+                var dndGranted by remember { mutableStateOf(DndHelper.isGranted(context)) }
+                // 从系统设置返回时自动刷新授权状态
+                DisposableEffect(lifecycleOwner) {
+                    val obs = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) dndGranted = DndHelper.isGranted(context)
+                    }
+                    lifecycleOwner.lifecycle.addObserver(obs)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+                }
+                Text(
+                    "进入日程「专注模式」时自动开启系统勿扰，退出时恢复原状态。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .background(
+                                if (dndGranted) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outline,
+                                CircleShape
+                            )
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (dndGranted) "已获得「通知访问权限」"
+                        else "尚未获得「通知访问权限」，专注时不会自动切换勿扰",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = {
+                    runCatching { context.startActivity(DndHelper.accessSettingsIntent()) }
+                }) {
+                    Text(if (dndGranted) "打开系统勿扰设置" else "去授权")
+                }
+            }
             // ===== 关于与更新 =====
             SectionCard(title = "关于与更新", icon = Icons.Default.Info) {
                 val versionName = remember {
