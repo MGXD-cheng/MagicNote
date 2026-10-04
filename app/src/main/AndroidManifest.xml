@@ -18,6 +18,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 日记锁：指纹 / 人脸（走系统设备锁验证，不采集生物数据） -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- 专注模式自动开启系统勿扰 -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- 屏幕时间统计：使用情况访问权限（特殊权限，需用户到系统设置开启） -->
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
