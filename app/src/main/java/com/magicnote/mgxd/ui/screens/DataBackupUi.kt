@@ -1,5 +1,6 @@
 package com.magicnote.mgxd.ui.screens
 
+import com.magicnote.mgxd.ui.viewmodel.ImportResult
 import android.net.Uri
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -95,9 +96,9 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
             scope.launch {
                 try {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
-                        out.write(dataVm.pendingExport!!.toByteArray(Charsets.UTF_8))
+                        out.write((dataVm.pendingExport ?: "").toByteArray(Charsets.UTF_8))
                     }
-                    Toast.makeText(context, "✅ 已导出 ${dataVm.pendingExport!!.length} 字符数据", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "✅ 已导出 ${(dataVm.pendingExport ?: "").length} 字符数据", Toast.LENGTH_LONG).show()
                 } catch (e: Exception) {
                     Toast.makeText(context, "导出失败：${e.message}", Toast.LENGTH_LONG).show()
                 }
@@ -114,7 +115,7 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
                 try {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         out.write("\uFEFF".toByteArray(Charsets.UTF_8)) // BOM：Excel 中文不乱码
-                        out.write(dataVm.pendingExport!!.toByteArray(Charsets.UTF_8))
+                        out.write((dataVm.pendingExport ?: "").toByteArray(Charsets.UTF_8))
                     }
                     Toast.makeText(context, "✅ CSV 已导出", Toast.LENGTH_LONG).show()
                 } catch (e: Exception) {
@@ -309,7 +310,7 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
             val conflicts = dataVm.countConflicts()
             if (conflicts == 0) {
                 dataVm.runImport(context, ConflictPolicy.SKIP) { r ->
-                    Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, syncSummary(r), Toast.LENGTH_LONG).show()
                 }
             } else {
                 showLanConflict = true
@@ -334,7 +335,7 @@ fun DataBackupCard(dataVm: DataTransferViewModel, vm: SettingsViewModel) {
                     TextButton(onClick = {
                         showLanConflict = false
                         dataVm.runImport(context, ConflictPolicy.SKIP) { r ->
-                            Toast.makeText(context, "同步完成：新增 " + r.imported + " 项", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, syncSummary(r), Toast.LENGTH_LONG).show()
                         }
                     }) { Text("跳过重复") }
                 },
@@ -471,7 +472,7 @@ fun MgxdImportDialog(
                     Text(transferState.label)
                     if (transferState.progress != null) {
                         LinearProgressIndicator(
-                            progress = { transferState.progress!! },
+                            progress = { (transferState.progress ?: 0f) },
                             modifier = Modifier.fillMaxWidth()
                         )
                     } else {
@@ -641,4 +642,16 @@ private fun ExportPickerDialog(
         },
         dismissButton = {}
     )
+}
+
+/** 统一的同步/导入结果文案：不再只报「新增」，否则覆盖/保留两份时会误显示「新增 0 项」 */
+private fun syncSummary(r: ImportResult): String {
+    val parts = mutableListOf<String>()
+    if (r.imported > 0) parts += "新增 ${r.imported} 项"
+    if (r.overwritten > 0) parts += "覆盖 ${r.overwritten} 项"
+    if (r.duplicated > 0) parts += "保留两份 ${r.duplicated} 项"
+    if (r.skipped > 0) parts += "跳过重复 ${r.skipped} 项"
+    if (r.failedImages > 0) parts += "图片写入失败 ${r.failedImages} 张"
+    if (parts.isEmpty()) return "同步完成：没有需要变更的数据（本地已是较新版本）"
+    return "同步完成：" + parts.joinToString("，")
 }
