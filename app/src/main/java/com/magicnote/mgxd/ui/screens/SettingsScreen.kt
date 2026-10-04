@@ -815,7 +815,7 @@ fun SettingsScreen(vm: SettingsViewModel, dataVm: DataTransferViewModel, onClose
                     }
                 }
                 if (updateInfo != null) {
-                    val info = updateInfo!!
+                    val info = updateInfo!! // 上一行已判非空
                     AlertDialog(
                         onDismissRequest = { if (!updateDownloading) vm.dismissUpdate() },
                         title = { Text("发现新版本 v" + info.latestVersion) },
