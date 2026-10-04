@@ -99,6 +99,25 @@
 
 ---
 
+## 📄 License
+
+本项目采用 **Apache License 2.0** 开源 —— 你可以自由使用、修改、分发本项目（包括商用），
+只需保留原始版权声明与许可文件，并遵守其中的专利与免责条款。
+
+```
+Copyright 2026 MGXD-cheng (Magic Note)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+```
+
+完整条款见根目录 [LICENSE](LICENSE) 文件。
+
+---
+
 ## 🗓 更新日志
 
 > 最新在上。每条列出该版本的主要改动。
