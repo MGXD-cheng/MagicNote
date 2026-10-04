@@ -937,13 +937,23 @@ private fun FocusModeScreen(
     val context = LocalContext.current
     val activity = context as? Activity
 
-    // 进入：横屏 + 屏幕常亮；退出：恢复竖屏 + 关闭常亮
+    // 进入：横屏 + 屏幕常亮 + 自动开启系统勿扰；退出：全部恢复
     DisposableEffect(Unit) {
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // 自动开启系统「勿扰」（未授权时只提示一次，功能照常使用，绝不崩溃）
+        val prevDnd = com.magicnote.mgxd.util.DndHelper.enter(context)
+        if (prevDnd == null && !com.magicnote.mgxd.util.DndHelper.isGranted(context)) {
+            android.widget.Toast.makeText(
+                context,
+                "想在专注时自动开启系统勿扰？请授予「通知访问权限」",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
         onDispose {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            com.magicnote.mgxd.util.DndHelper.exit(context, prevDnd)
         }
     }
 
